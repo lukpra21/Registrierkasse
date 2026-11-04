@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      veroeffentlichen:
+        description: "Als GitHub-Release veröffentlichen (Tag v<Version> wird angelegt)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -79,9 +84,12 @@ jobs:
             dist/Registrierkasse-Setup-*.exe
             dist/update.json
       - name: Release veröffentlichen
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.veroeffentlichen
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           name: Registrierkasse ${{ steps.version.outputs.version }}
           body: |
             **Installation:** `Registrierkasse-Setup-${{ steps.version.outputs.version }}.exe` herunterladen und ausführen.

@@ -78,9 +78,10 @@ kasse-ui --browser    # im Browser (nur 127.0.0.1)
 
 ## Updates
 
-- Neue Version veröffentlichen: Version in `src/kasse/__init__.py` und `pyproject.toml` erhöhen, committen,
-  dann Tag setzen und pushen (`git tag v0.4.0 && git push origin v0.4.0`). Der Workflow *Windows-Installer*
-  testet, baut den Installer und veröffentlicht ihn samt `update.json` als GitHub-Release.
+- Neue Version veröffentlichen: Version in `src/kasse/__init__.py` und `pyproject.toml` erhöhen, committen und
+  pushen. Dann auf GitHub unter *Actions → Windows-Installer → Run workflow* mit Häkchen
+  **„Als GitHub-Release veröffentlichen“** starten (alternativ Tag `v0.4.0` pushen). Der Workflow testet,
+  baut den Installer und veröffentlicht ihn samt `update.json` als GitHub-Release.
 - Jede Kasse prüft beim Start `https://github.com/lukpra21/Registrierkasse/releases/latest/download/update.json`,
   zeigt verfügbare Updates in der Kopfzeile an und installiert sie auf Knopfdruck (vorher automatische Sicherung,
   Prüfsumme wird kontrolliert, nur Installer aus diesem Repository werden akzeptiert).
