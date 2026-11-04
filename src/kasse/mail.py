@@ -61,4 +61,9 @@ def dokument_text(con: sqlite3.Connection, typ: str, nummer: str) -> tuple[str, 
     vorlage = einstellung(con, "mail_text") or (
         "Sehr geehrte Damen und Herren,\n\nim Anhang erhalten Sie {typ} {nummer}.\n\n"
         "Mit freundlichen Grüßen\n{firma}")
-    return betreff, vorlage.format(typ=typ, nummer=nummer, firma=firma)
+    text = vorlage.format(typ=typ, nummer=nummer, firma=firma)
+    from .hersteller import WERBUNG_MAIL, werbung_aktiv
+
+    if werbung_aktiv(con, "mail"):
+        text += f"\n\n-- \n{WERBUNG_MAIL}"
+    return betreff, text

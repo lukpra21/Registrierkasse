@@ -195,11 +195,21 @@ def drucke_bon(con: sqlite3.Connection, beleg_id: int, drucker=None, drucker_nam
         p.text(zeile)
     p.set(align="center")
     p.qr(maschinenlesbarer_code(jws), size=L.qr_groesse, native=False, center=True)
+    if werbung := bon_werbung(con):
+        p.set(align="center", font="b")
+        p.text(werbung + "\n")
     p.set(align="left")
     if L.vorschub:
         p.text("\n" * L.vorschub)
     if L.schnitt != "kein":
         p.cut(mode="PART" if L.schnitt == "teil" else "FULL", feed=False)
+
+
+def bon_werbung(con: sqlite3.Connection) -> str:
+    """Herstellerhinweis unter dem QR-Code (abschaltbar: Einstellungen → Über)."""
+    from ..hersteller import WERBUNG_BON, werbung_aktiv
+
+    return WERBUNG_BON if werbung_aktiv(con, "bon") else ""
 
 
 def kassenlade_oeffnen(con: sqlite3.Connection, drucker=None) -> None:

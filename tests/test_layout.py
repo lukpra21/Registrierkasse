@@ -114,3 +114,33 @@ def test_api_vorschau_und_validierung(api):
     assert not api.briefpapier_setzen("erste", "data:text/plain;base64,QUJD")["ok"]
     assert api.briefpapier_setzen("folge", _briefpapier_pdf("FOLGE"))["ok"]
     assert api.einstellungen()["daten"]["_briefpapier"]["a4_briefpapier_folge"] is True
+
+
+def test_hersteller_hinweis(kasse, tmp_path):
+    from kasse import hersteller, mail
+
+    con = kasse.con
+    kasse.startbeleg()
+    b = kasse.verkauf([Position("Semmel", Decimal(2), 45, "10")])
+    d = Dummy()
+    drucke_bon(con, b, d)
+    assert b"www.kiber.at" in d.output
+    assert "www.kiber.at" in _text(muster_pdf(con, "Rechnung", tmp_path / "a.pdf"))
+    assert mail.dokument_text(con, "Rechnung", "RE-1")[1].endswith("www.kiber.at")
+    # vom Betrieb abschaltbar
+    _setze(con, werbung_bon="0", werbung_a4="0", werbung_mail="0")
+    d = Dummy()
+    drucke_bon(con, b, d)
+    assert b"kiber" not in d.output
+    assert "kiber" not in _text(muster_pdf(con, "Rechnung", tmp_path / "b.pdf"))
+    assert "kiber" not in mail.dokument_text(con, "Rechnung", "RE-1")[1]
+    assert "kiber.at" in hersteller.ATRUST_HINWEIS
+
+
+def test_api_hersteller(api):
+    st = api.status()["daten"]
+    assert st["hersteller"]["website"] == "https://www.kiber.at"
+    assert api.link_oeffnen("atrust")["daten"] == "https://www.kiber.at"
+    assert not api.link_oeffnen("https://boese.example")["ok"]
+    e = api.einstellungen()["daten"]
+    assert e["werbung_bon"] == e["werbung_a4"] == e["werbung_mail"] == "1"

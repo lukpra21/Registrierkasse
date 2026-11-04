@@ -299,6 +299,8 @@
           <label>Umgebung<select name="atrust_umgebung"><option value="test">Testumgebung</option><option value="produktiv">Produktiv</option></select></label>
           <div class="geheim" data-geheim="atrust"><label>Passwort<input type="password" placeholder="••••••"></label><button class="btn ghost" type="button">Speichern</button></div>
           <button class="btn ghost" type="button" id="btn-atrust-test">Verbindung testen</button>
+          <div class="info-box">Noch keine A-Trust-Lizenz? Die Registrierkassenlizenz (a.sign RK Online) erhalten Sie über
+            <a href="#" data-link="atrust"><b>www.kiber.at</b></a>.</div>
         </fieldset>
         <fieldset><legend>Kartenzahlung</legend>
           <label>Terminal<select name="karten_terminal"><option value="manuell">Manuell bestätigen (jede App / jedes Terminal)</option><option value="viva">Viva.com Tap to Pay (automatisch)</option></select></label>
@@ -332,6 +334,16 @@
           <div class="zweispaltig"><label>Erlöse 19 %<input name="konto_erloes_19"></label><label>Gutscheine (Verbindl.)<input name="konto_gutschein"></label></div>
           <p class="hinweis">Kontonummern mit dem Steuerberater abstimmen.</p>
         </fieldset>
+        <fieldset><legend>Über</legend>
+          <div class="ueber-kopf"><div class="logo">€</div><div><b>Registrierkasse</b><small id="ueber-version">–</small></div></div>
+          <p class="hinweis">Hersteller und Support: <a href="#" data-link="website"><b>www.kiber.at</b></a><br>
+            A-Trust-Registrierkassenlizenz (a.sign RK Online): erhältlich über <a href="#" data-link="atrust"><b>www.kiber.at</b></a></p>
+          <div class="unterueberschrift">Hinweis „www.kiber.at“ anzeigen</div>
+          <label class="switch"><input type="checkbox" data-schalter="werbung_bon"><span></span>auf dem Bon (unter dem QR-Code)</label>
+          <label class="switch"><input type="checkbox" data-schalter="werbung_a4"><span></span>auf Rechnung/Lieferschein (Fußzeile)</label>
+          <label class="switch"><input type="checkbox" data-schalter="werbung_mail"><span></span>in E-Mails (Signatur)</label>
+          <input type="hidden" name="werbung_bon"><input type="hidden" name="werbung_a4"><input type="hidden" name="werbung_mail">
+        </fieldset>
         <fieldset><legend>Updates</legend>
           <p class="hinweis" id="version-info">–</p>
           <p class="hinweis">Die Kasse sucht bei jedem Start automatisch nach neuen Versionen auf GitHub.
@@ -354,6 +366,7 @@
     <p class="unter">PIN eingeben</p>
     <div class="pin-punkte" id="pin-punkte"></div>
     <div class="pinpad" id="pinpad"></div>
+    <a class="hersteller-link" href="#" data-link="website">Registrierkasse von <b>www.kiber.at</b></a>
   </div>
 </div>
 

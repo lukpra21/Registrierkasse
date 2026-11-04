@@ -1,5 +1,8 @@
 # Registrierkasse für KMU
 
+Hersteller und Support: **[www.kiber.at](https://www.kiber.at)** – dort ist auch die für den Echtbetrieb
+nötige **A-Trust-Registrierkassenlizenz (a.sign RK Online)** erhältlich.
+
 RKSV-konforme Registrierkasse für Windows-Notebooks mit moderner Glas-Oberfläche:
 A-Trust-Onlinesignatur, Bondrucker und A4-Rechnungen, Kartenzahlung per Smartphone,
 Kassenbuch, Benutzer mit PIN, verschlüsselte Datensicherung und Export für den Steuerberater.
@@ -47,6 +50,9 @@ kasse-ui --browser    # im Browser (nur 127.0.0.1)
 ```
 
 ## Erste Schritte
+
+> Für den Echtbetrieb wird eine A-Trust-Registrierkassenlizenz benötigt – erhältlich über
+> [www.kiber.at](https://www.kiber.at). Ohne Lizenz lässt sich die Kasse im Modus „Lokaler Test“ ausprobieren.
 
 1. **QRK abschließen:** DEP-Export sichern (7 Jahre aufbewahren), Schlussbeleg, alte Kasse in FinanzOnline außer Betrieb nehmen.
 2. **Kasse einrichten** (Assistent beim ersten Start): Kassen-ID, A-Trust-Zugang (zuerst *Testumgebung*).

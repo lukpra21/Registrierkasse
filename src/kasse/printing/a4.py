@@ -163,6 +163,9 @@ def _render(con: sqlite3.Connection, daten: A4Daten, ziel: Path | str) -> Path:
         el.append(Paragraph("Ware erhalten: ______________________________", normal))
 
     logo = _logo_bild(e("firma_logo")) if L.logo_position != "aus" else None
+    from ..hersteller import WERBUNG_A4, werbung_aktiv
+
+    werbung = WERBUNG_A4 if werbung_aktiv(con, "a4") else ""
     hintergrund = {1: (L.briefpapier_erste, L.briefpapier_erste_typ),
                    2: (L.briefpapier_folge or L.briefpapier_erste, L.briefpapier_folge_typ or L.briefpapier_erste_typ)}
 
@@ -203,7 +206,12 @@ def _render(con: sqlite3.Connection, daten: A4Daten, ziel: Path | str) -> Path:
                 canvas.drawCentredString(A4[0] / 2, y, zeile)
                 y -= 9
         canvas.setFont(L.schrift, 7)
-        canvas.drawRightString(A4[0] - L.rand_rechts * mm, max(6 * mm, L.rand_unten * mm - 14 * mm), f"Seite {doc.page}")
+        unten = max(6 * mm, L.rand_unten * mm - 14 * mm)
+        canvas.drawRightString(A4[0] - L.rand_rechts * mm, unten, f"Seite {doc.page}")
+        if werbung:
+            canvas.setFont(L.schrift, 6)
+            canvas.setFillGray(0.45)
+            canvas.drawString(L.rand_links * mm, unten, werbung)
         canvas.restoreState()
 
     ziel = Path(ziel)

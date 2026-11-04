@@ -1,4 +1,4 @@
-; Inno-Setup-Skript für die Registrierkasse
+﻿; Inno-Setup-Skript für die Registrierkasse
 ; Aufruf: iscc /DVersion=0.2.0 packaging\registrierkasse.iss
 ; Erwartet die PyInstaller-Ausgabe in dist\Registrierkasse
 
@@ -11,7 +11,10 @@ AppId={{6E2F3C1A-8B4D-4E8F-9C2A-5D7B1F0A3E91}
 AppName=Registrierkasse
 AppVersion={#Version}
 AppVerName=Registrierkasse {#Version}
-AppPublisher=Registrierkasse
+AppPublisher=kiber.at
+AppPublisherURL=https://www.kiber.at
+AppSupportURL=https://www.kiber.at
+AppUpdatesURL=https://github.com/lukpra21/Registrierkasse/releases
 DefaultDirName={autopf}\Registrierkasse
 DefaultGroupName=Registrierkasse
 DisableProgramGroupPage=yes
@@ -40,7 +43,11 @@ Name: "sicherung"; Description: "Tägliche Datensicherung um 21:00 Uhr einrichte
 [Files]
 Source: "..\dist\Registrierkasse\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Messages]
+de.FinishedLabel=Die Registrierkasse wurde installiert.%n%nWichtig: Für den Echtbetrieb benötigen Sie eine A-Trust-Registrierkassenlizenz (a.sign RK Online). Diese erhalten Sie über www.kiber.at – bis dahin kann die Kasse im Testmodus ausprobiert werden.
+
 [Icons]
+Name: "{group}\kiber.at – Website und A-Trust-Lizenz"; Filename: "https://www.kiber.at"
 Name: "{group}\Registrierkasse"; Filename: "{app}\Registrierkasse.exe"
 Name: "{group}\Registrierkasse deinstallieren"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\Registrierkasse"; Filename: "{app}\Registrierkasse.exe"; Tasks: desktop
@@ -49,6 +56,7 @@ Name: "{userstartup}\Registrierkasse"; Filename: "{app}\Registrierkasse.exe"; Ta
 [Run]
 Filename: "{app}\kasse-cli.exe"; Parameters: "sicherung-planen --uhrzeit 21:00"; Flags: runhidden; Tasks: sicherung
 Filename: "{app}\Registrierkasse.exe"; Description: "Registrierkasse jetzt starten"; Flags: nowait postinstall skipifsilent
+Filename: "https://www.kiber.at"; Description: "www.kiber.at öffnen (A-Trust-Lizenz bestellen)"; Flags: shellexec postinstall skipifsilent nowait unchecked
 
 [UninstallRun]
 Filename: "schtasks.exe"; Parameters: "/Delete /F /TN ""Registrierkasse Sicherung"""; Flags: runhidden; RunOnceId: "SicherungEntfernen"

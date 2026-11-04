@@ -21,8 +21,8 @@ import threading
 from decimal import Decimal
 from pathlib import Path
 
-from .. import (__version__, benutzer, db, dokumente, ebinterface, export, geheim, gutscheine, kassenbuch,
-                mail, sicherung, terminal, update)
+from .. import (__version__, benutzer, db, dokumente, ebinterface, export, geheim, gutscheine, hersteller,
+                kassenbuch, mail, sicherung, terminal, update)
 from ..config import datenverzeichnis
 from ..printing.layout import ALLE_STANDARDS
 from ..geld import anzeige, euro_zu_cent, netto_aus_brutto
@@ -45,6 +45,7 @@ EINSTELLUNGEN = (
     *export.STANDARD_KONTEN.keys(),
     "akzentfarbe",
     *ALLE_STANDARDS,
+    "werbung_bon", "werbung_a4", "werbung_mail",
 )
 
 FEHLERTYPEN = (KassenFehler, SignaturFehler, ValueError, OSError, sqlite3.Error, terminal.TerminalFehler,
@@ -188,6 +189,8 @@ class KassenApi:
             "update": self._update_info,
             "karten_terminal": e("karten_terminal", "manuell"),
             "dateidialog": self._fenster is not None,
+            "hersteller": {"name": hersteller.HERSTELLER, "website": hersteller.WEBSITE,
+                           "website_kurz": hersteller.WEBSITE_KURZ, "atrust_hinweis": hersteller.ATRUST_HINWEIS},
         }
 
     def _hat_belege(self) -> bool:
@@ -970,7 +973,8 @@ class KassenApi:
     @_api()
     def einstellungen(self):
         standard = {**export.STANDARD_KONTEN, "sicherung_intervall_stunden": "24", "sicherung_behalten": "30",
-                    "smtp_port": "587", "auto_abmelden_min": "0", "nach_verkauf": "dialog", **ALLE_STANDARDS}
+                    "smtp_port": "587", "auto_abmelden_min": "0", "nach_verkauf": "dialog", **ALLE_STANDARDS,
+                    **hersteller.WERBUNG_STANDARD}
         werte = {}
         for k in EINSTELLUNGEN:
             gespeichert = self._e(k, None)
@@ -1062,6 +1066,18 @@ class KassenApi:
             daten = a4.muster_pdf(self.con, typ, pfad)
         return {"pdf": base64.b64encode(daten.read_bytes()).decode(), "pfad": str(daten)}
 
+    @_api(frei=True)
+    def link_oeffnen(self, ziel: str = "website"):
+        """Öffnet die Hersteller-Website bzw. die Release-Seite im Standardbrowser (nur feste Adressen)."""
+        import webbrowser
+
+        url = {"website": hersteller.WEBSITE, "atrust": hersteller.WEBSITE, "releases": update.RELEASES_SEITE}.get(ziel)
+        if not url:
+            raise ValueError("Unbekannter Link")
+        if not os.environ.get("KASSE_NICHT_OEFFNEN"):
+            webbrowser.open(url)
+        return url
+
     @_api()
     def vorschau_bon(self, werte: dict | None = None):
         from ..printing.bon import bon_kopf, bon_text
@@ -1076,7 +1092,10 @@ class KassenApi:
             kopf = "".join(bon_kopf(self.con, L.zeichen))
             text = "".join(bon_text(self.con, row[0], L.zeichen, mit_kopf=False)) if row else \
                 "(noch kein Beleg vorhanden – Vorschau nach dem Startbeleg)\n"
-        return {"kopf": kopf, "text": text, "zeichen": L.zeichen, "zentriert": L.kopf_zentriert,
+        from ..printing.bon import bon_werbung
+
+        return {"kopf": kopf, "text": text, "werbung": bon_werbung(self.con), "zeichen": L.zeichen,
+                "zentriert": L.kopf_zentriert,
                 "schrift": L.schrift, "qr": L.qr_groesse, "papier": L.papierbreite}
 
     def _vorschau_werte(self, werte: dict | None):

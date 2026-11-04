@@ -228,7 +228,11 @@ async function ladeStatus() {
 
   const chips = [];
   if (s.signer === "test") chips.push(`<span class="chip warn" title="Lokaler Test-Signer – nicht für den Echtbetrieb">Testmodus</span>`);
-  if (s.signer_fehler) chips.push(`<span class="chip err" title="${esc(s.signer_fehler)}" data-gehe="einstellungen">A-Trust nicht konfiguriert</span>`);
+  if (s.signer_fehler) chips.push(`<span class="chip err" title="${esc(s.signer_fehler)} – Lizenz erhältlich über www.kiber.at" data-gehe="einstellungen">A-Trust nicht konfiguriert</span>`);
+  if (s.signer === "test" && s.eingerichtet && !S.lizenzHinweis) {
+    S.lizenzHinweis = true;
+    setTimeout(() => toast("Testmodus: Für den Echtbetrieb wird eine A-Trust-Lizenz benötigt – erhältlich über www.kiber.at", "ok", 7000), 1500);
+  }
   if (s.ausfall_ueber_48h) chips.push(`<span class="chip err" title="Ausfall seit ${esc(s.ausfall_seit)}">Ausfall &gt; 48 h – FinanzOnline melden!</span>`);
   else if (s.ausfall_seit) chips.push(`<span class="chip err" title="seit ${esc(s.ausfall_seit)}">Signatur ausgefallen</span>`);
   else if (s.gestartet && !s.signer_fehler) chips.push(`<span class="chip ok neben">Signatur aktiv</span>`);
@@ -280,6 +284,8 @@ function einrichtungsDialog() {
         <label>A-Trust Passwort<input id="e-pw" type="password"></label>
       </div>
       <p class="hinweis">Das Passwort wird verschlüsselt in der Windows-Anmeldeinformationsverwaltung gespeichert, nicht in der Kassendatenbank.</p>
+      <div class="info-box" id="e-lizenz">Für den Echtbetrieb benötigen Sie eine <b>A-Trust-Registrierkassenlizenz</b> (a.sign RK Online).
+        Noch keine Lizenz? Erhältlich über <a href="#" data-link="atrust"><b>www.kiber.at</b></a> – bis dahin können Sie mit „Lokaler Test“ alles ausprobieren.</div>
     </div>
     <div class="modal-knöpfe" style="justify-content:space-between"><button class="btn ghost" id="e-sicherung"><i data-i="undo"></i>Aus Sicherung wiederherstellen</button>
       <button class="btn" id="e-ok">Neu einrichten</button></div>`);
@@ -1186,6 +1192,7 @@ async function ladeEinstellungsListen() {
     || `<li><small>Keine Benutzer – die Kasse ist ohne Anmeldung bedienbar. Der erste Benutzer muss Chef sein.</small></li>`;
   S.nutzer = nutzer;
   const st = await api("status");
+  $("#ueber-version").textContent = `Version ${st.version} · Hersteller ${st.hersteller.name}`;
   $("#version-info").innerHTML = `Installierte Version: <b>${esc(st.version)}</b> · <a href="${esc(st.releases)}" target="_blank" rel="noopener">alle Versionen</a>`;
   zeigeUpdate(st.update);
 }
@@ -1290,7 +1297,7 @@ $("#btn-bon-vorschau").onclick = () => sicher(async () => {
   const schnitt = werte.bon_schnitt === "kein" ? "kein Schnitt" : werte.bon_schnitt === "voll" ? "✂ Vollschnitt" : "✂ Teilschnitt";
   dialog(`<h3>Vorschau Bon (${r.papier} mm, ${r.zeichen} Zeichen)</h3><p class="unter">So wird der letzte Beleg mit den aktuellen Einstellungen gedruckt.</p>
     <div class="bon-vorschau"><div class="bon-papier ${r.schrift === "b" ? "schrift-b" : ""}" style="width:calc(${r.zeichen}ch + 20px)">
-      <div class="${r.zentriert ? "zentriert" : ""}">${esc(r.kopf)}</div>${esc(r.text)}<div class="qr" style="width:${qrPx}px;height:${qrPx}px" title="RKSV-QR-Code"></div>${"\n".repeat(Number(werte.bon_vorschub || 0))}<div class="schnitt">${schnitt}</div>
+      <div class="${r.zentriert ? "zentriert" : ""}">${esc(r.kopf)}</div>${esc(r.text)}<div class="qr" style="width:${qrPx}px;height:${qrPx}px" title="RKSV-QR-Code"></div>${r.werbung ? `<div class="zentriert" style="font-size:.85em;margin-top:6px">${esc(r.werbung)}</div>` : ""}${"\n".repeat(Number(werte.bon_vorschub || 0))}<div class="schnitt">${schnitt}</div>
     </div></div>
     <div class="modal-knöpfe"><button class="btn" onclick="schliessen()">Schließen</button></div>`, { breit: true });
 });
@@ -1329,6 +1336,16 @@ $("#btn-protokoll").onclick = () => sicher(async () => {
   dialog(`<h3>Ereignisprotokoll</h3><div class="tabelle-wrap" style="max-height:60vh"><table class="tabelle"><thead><tr><th>Zeit</th><th>Benutzer</th><th>Ereignis</th><th>Details</th></tr></thead><tbody>${
     l.map((e) => `<tr><td>${zeit(e.zeitpunkt)}</td><td>${esc(e.benutzer || "")}</td><td>${esc(e.art)}</td><td>${esc(e.text || "")}</td></tr>`).join("")}</tbody></table></div>
     <div class="modal-knöpfe"><button class="btn" onclick="schliessen()">Schließen</button></div>`, { breit: true });
+});
+
+/* ====================================================================== Hersteller-Links */
+
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("[data-link]");
+  if (!a) return;
+  e.preventDefault();
+  api("link_oeffnen", a.dataset.link).then((url) => { if (!window.pywebview) window.open(url, "_blank", "noopener"); })
+    .catch((err) => toast(err.message, "fehler"));
 });
 
 /* ====================================================================== Start */
