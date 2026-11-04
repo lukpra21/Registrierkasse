@@ -236,7 +236,6 @@ async function ladeStatus() {
   if (s.lager_warnungen) chips.push(`<span class="chip warn" data-gehe="artikel" data-lager>${s.lager_warnungen} Artikel nachbestellen</span>`);
   if (s.rechnungen_ueberfaellig) chips.push(`<span class="chip warn" data-gehe="dokumente">${s.rechnungen_ueberfaellig} Rechnung(en) überfällig</span>`);
   if (s.update && istChef()) chips.push(`<span class="chip warn" data-gehe="einstellungen">Update ${esc(s.update.version)}</span>`);
-  if (["abgelaufen", "ungueltig", "fehlt"].includes(s.lizenz?.status)) chips.push(`<span class="chip warn neben" title="${esc(s.lizenz.text)}">Lizenz</span>`);
   chips.push(s.sicherung_faellig
     ? `<span class="chip warn" data-gehe="abschluss">Sicherung fällig</span>`
     : `<span class="chip ok neben" title="${esc(s.sicherung_zuletzt)}">Gesichert${s.sicherung_verschluesselt ? " 🔒" : ""}</span>`);
@@ -1105,7 +1104,7 @@ async function ladeEinstellungen() {
   $(".nur-viva").style.display = f.elements.karten_terminal.value === "viva" ? "" : "none";
   await ladeEinstellungsListen();
 }
-/** Logo, Passwort-Status, Benutzer und Lizenz neu laden – ohne ungespeicherte Formulareingaben zu verwerfen. */
+/** Logo, Passwort-Status, Benutzer und Version neu laden – ohne ungespeicherte Formulareingaben zu verwerfen. */
 async function ladeEinstellungsListen() {
   const b = await api("branding");
   $("#logo-vorschau").innerHTML = b.logo ? `<img src="${b.logo}" alt="Logo">` : "Kein Logo";
@@ -1115,10 +1114,9 @@ async function ladeEinstellungsListen() {
   $("#benutzer-liste").innerHTML = nutzer.map((u) => `<li data-id="${u.id}"><span>${esc(u.name)}<small>${u.rolle === "chef" ? "Chef" : "Kassier"}${u.aktiv ? "" : " · deaktiviert"}</small></span><button class="btn ghost" type="button">Bearbeiten</button></li>`).join("")
     || `<li><small>Keine Benutzer – die Kasse ist ohne Anmeldung bedienbar. Der erste Benutzer muss Chef sein.</small></li>`;
   S.nutzer = nutzer;
-  const li = S.status.lizenz || {};
-  $("#lizenz-info").textContent = `Version ${S.status.version} · ${li.text || ""}`;
-  $("#lizenz-feld").style.display = li.status === "ohne_pruefung" ? "none" : "";
-  zeigeUpdate(S.status.update);
+  const st = await api("status");
+  $("#version-info").innerHTML = `Installierte Version: <b>${esc(st.version)}</b> · <a href="${esc(st.releases)}" target="_blank" rel="noopener">alle Versionen</a>`;
+  zeigeUpdate(st.update);
 }
 function zeigeUpdate(u) {
   $("#update-info").innerHTML = u ? `Version <b>${esc(u.version)}</b> verfügbar${u.hinweis ? ` – ${esc(u.hinweis)}` : ""}` : "Kein Update bekannt.";
@@ -1162,7 +1160,13 @@ $("#btn-mailtest").onclick = async () => {
   const an = await eingabe("Testnachricht", { feld: "Empfänger", typ: "email", knopf: "Senden" });
   if (an) sicher(async () => { await api("mail_testen", an); toast("Testnachricht gesendet"); });
 };
-$("#lizenz-ok").onclick = () => sicher(async () => { const r = await api("lizenz_setzen", $("#lizenz-schluessel").value); toast(r.text); await ladeStatus(); ladeEinstellungsListen(); });
+$("#btn-selbsttest").onclick = () => sicher(async () => {
+  toast("Selbsttest läuft …");
+  const r = await api("selbsttest");
+  dialog(`<h3>Selbsttest ${r.ok ? "<span style='color:var(--gruen)'>bestanden</span>" : "<span style='color:var(--rot)'>mit Fehlern</span>"}</h3>
+    <pre class="bon" style="white-space:pre-wrap">${esc(r.text)}</pre>
+    <div class="modal-knöpfe"><button class="btn" onclick="schliessen()">Schließen</button></div>`, { breit: true });
+});
 $("#update-pruefen").onclick = () => sicher(async () => { const u = await api("update_pruefen"); zeigeUpdate(u); toast(u ? `Update ${u.version} verfügbar` : "Die Kasse ist aktuell"); });
 $("#update-installieren").onclick = async () => {
   if (await bestaetigen("Update installieren?", "Vorher wird automatisch eine Sicherung erstellt. Die Kasse wird dabei neu gestartet.", "Installieren"))

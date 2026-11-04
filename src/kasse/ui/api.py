@@ -22,7 +22,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from .. import (__version__, benutzer, db, dokumente, ebinterface, export, geheim, gutscheine, kassenbuch,
-                lizenz, mail, sicherung, terminal, update)
+                mail, sicherung, terminal, update)
 from ..config import datenverzeichnis
 from ..geld import anzeige, euro_zu_cent, netto_aus_brutto
 from ..rksv import Kasse, KassenFehler, Position, SignaturFehler
@@ -42,7 +42,7 @@ EINSTELLUNGEN = (
     "karten_terminal", "viva_client_id", "viva_terminal_id", "viva_umgebung",
     "smtp_host", "smtp_port", "smtp_sicherheit", "smtp_benutzer", "smtp_absender", "mail_text",
     *export.STANDARD_KONTEN.keys(),
-    "update_url", "akzentfarbe",
+    "akzentfarbe",
 )
 
 FEHLERTYPEN = (KassenFehler, SignaturFehler, ValueError, OSError, sqlite3.Error, terminal.TerminalFehler,
@@ -180,7 +180,7 @@ class KassenApi:
             "lager_warnungen": lager,
             "rechnungen_ueberfaellig": offen,
             "kassastand": kassenbuch.kassastand(self.con),
-            "lizenz": lizenz.pruefen(e("lizenz")),
+            "releases": update.RELEASES_SEITE,
             "update": self._update_info,
             "karten_terminal": e("karten_terminal", "manuell"),
         }
@@ -883,8 +883,6 @@ class KassenApi:
         geaendert = []
         for k, v in werte.items():
             if k in EINSTELLUNGEN and str(v) != (self._e(k, "") or ""):
-                if k == "update_url" and v and not str(v).startswith("https://"):
-                    raise ValueError("Update-Adresse muss mit https:// beginnen")
                 if k == "akzentfarbe" and v and not re.fullmatch(r"#[0-9a-fA-F]{6}", str(v)):
                     raise ValueError("Farbe im Format #RRGGBB angeben")
                 db.setze_einstellung(self.con, k, str(v))
@@ -925,15 +923,6 @@ class KassenApi:
         db.setze_einstellung(self.con, "firma_logo", data_url or "")
         self.con.commit()
         return True
-
-    @_api(recht="chef")
-    def lizenz_setzen(self, schluessel: str):
-        info = lizenz.pruefen(schluessel)
-        if info["status"] == "ungueltig":
-            raise ValueError(info["text"])
-        db.setze_einstellung(self.con, "lizenz", schluessel.strip())
-        self.con.commit()
-        return info
 
     @_api()
     def drucker_liste(self):
@@ -977,8 +966,17 @@ class KassenApi:
         threading.Thread(target=lauf, daemon=True).start()
 
     @_api(recht="chef")
+    def selbsttest(self):
+        from ..selbsttest import ausfuehren
+
+        zeilen: list[str] = []
+        ok = ausfuehren(zeilen.append)
+        return {"ok": ok, "text": "\n".join(zeilen)}
+
+    @_api(recht="chef")
     def update_pruefen(self):
         self._update_info = update.pruefen(self._e("update_url"))
+        self._update_fehler = None
         return self._update_info
 
     @_api(recht="chef")

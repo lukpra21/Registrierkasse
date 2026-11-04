@@ -23,13 +23,17 @@ Kassenbuch, Benutzer mit PIN, verschlüsselte Datensicherung und Export für den
 | **Auswertung** | Tagesbericht, Statistik (Umsatz je Tag/Monat, Top-Artikel, Warengruppen, Uhrzeit) |
 | **Steuerberater** | ZIP mit Belegen (CSV), Rechnungen (CSV), BMD-Buchungen (Tageslosungen) und DEP |
 | **Sicherung** | automatisch (Start, alle 30 min geprüft, Monatsbeleg, Windows-Aufgabe), AES-256-verschlüsselt, Rotation, Wiederherstellung |
-| **Betrieb** | Windows-Installer, automatische Updates mit Prüfsumme, Lizenzschlüssel (Ed25519), eigenes Logo/Akzentfarbe |
+| **Betrieb** | Windows-Installer, automatische Updates aus den GitHub-Releases (mit Prüfsumme), eigenes Logo/Akzentfarbe |
 | **Import** | einmalig aus QRK: Firmendaten, Steuersätze, Warengruppen, Artikel |
 
 ## Installation
 
-**Für Anwender:** `Registrierkasse-Setup-<version>.exe` ausführen (aus den GitHub-Releases bzw.
-dem Build-Workflow). Optional: Desktop-Symbol, Autostart, tägliche Sicherung um 21:00.
+**Für Anwender:** Den Installer der neuesten Version herunterladen und ausführen:
+
+**➜ [Registrierkasse – Download (neueste Version)](https://github.com/lukpra21/Registrierkasse/releases/latest)**
+
+Optional: Desktop-Symbol, Autostart, tägliche Sicherung um 21:00. Spätere Versionen erkennt die
+Kasse selbst und installiert sie auf Knopfdruck (*Einstellungen → Updates*).
 
 **Für Entwicklung:**
 
@@ -72,19 +76,20 @@ kasse-ui --browser    # im Browser (nur 127.0.0.1)
   API-Zugang (Client-ID/Secret) und Terminal-ID erzeugen und unter *Einstellungen → Kartenzahlung* eintragen.
   Zuerst mit einem **Demo-Konto** testen – Endpunkte siehe `src/kasse/terminal.py`.
 
-## Updates & Lizenz
+## Updates
 
-- Der Build-Workflow erzeugt bei einem Tag `v*` den Installer und `update.json`.
-  Die URL der `update.json` unter *Einstellungen → Lizenz & Updates* eintragen. Bei einem **privaten**
-  Repository muss die Datei öffentlich erreichbar abgelegt werden (z. B. eigener Webspace).
-- Lizenzschlüssel: `python tools/lizenz.py init --privat <pfad>` (einmalig, Hersteller), dann
-  `python tools/lizenz.py ausstellen …`. Eine fehlende Lizenz blockiert die Kasse **nie** (RKSV-Pflichten).
+- Neue Version veröffentlichen: Version in `src/kasse/__init__.py` und `pyproject.toml` erhöhen, committen,
+  dann Tag setzen und pushen (`git tag v0.4.0 && git push origin v0.4.0`). Der Workflow *Windows-Installer*
+  testet, baut den Installer und veröffentlicht ihn samt `update.json` als GitHub-Release.
+- Jede Kasse prüft beim Start `https://github.com/lukpra21/Registrierkasse/releases/latest/download/update.json`,
+  zeigt verfügbare Updates in der Kopfzeile an und installiert sie auf Knopfdruck (vorher automatische Sicherung,
+  Prüfsumme wird kontrolliert, nur Installer aus diesem Repository werden akzeptiert).
 
 ## Kommandozeile (`kasse-cli`)
 
 ```text
 init, info, set, import-qrk, artikel, startbeleg, nullbeleg, verkauf, dep-export,
-sicherung, sicherung-planen, atrust-test, passwort, export
+sicherung, sicherung-planen, atrust-test, passwort, export, selbsttest
 ```
 
 ## Belegkette prüfen
@@ -112,11 +117,10 @@ src/kasse/
   terminal.py     Kartenterminal      mail.py         E-Mail-Versand
   ebinterface.py  E-Rechnung          export.py       Steuerberater/BMD
   sicherung.py    Sicherung           geheim.py       Windows-Anmeldeinformationsverwaltung
-  lizenz.py       Lizenzschlüssel     update.py       Updates
+  update.py       Updates (GitHub-Releases)
   printing/       Bon (ESC/POS), A4 (PDF)
   importer/qrk.py QRK-Import          ui/             Oberfläche (pywebview + HTML/CSS/JS)
 packaging/        PyInstaller, Inno Setup, Programmsymbol
-tools/lizenz.py   Lizenzwerkzeug (Hersteller)
 tools/dep_pruefen.py  unabhängige Prüfung eines DEP-Exports (Signaturen, Verkettung, Umsatzzähler)
 .github/workflows Tests (Windows + Linux), Installer-Build
 ```

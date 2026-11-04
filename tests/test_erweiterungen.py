@@ -1,5 +1,5 @@
 """Tests für Benutzer, Rabatte, Mischzahlung, Gutscheine, Kassenbuch, Lager, Sicherung,
-Export, E-Rechnung, E-Mail, Kartenterminal, Lizenz und Updates."""
+Export, E-Rechnung, E-Mail, Kartenterminal und Updates."""
 
 import csv
 import io
@@ -10,11 +10,8 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ed25519
 
-from kasse import (db, ebinterface, export, geheim, kassenbuch, lizenz, mail, sicherung, terminal,
-                   update)
+from kasse import db, ebinterface, export, geheim, kassenbuch, mail, sicherung, terminal, update
 from kasse.ui.api import KassenApi
 
 
@@ -275,18 +272,7 @@ def test_viva_terminal(api, monkeypatch):
     assert api.con.execute("SELECT referenz FROM zahlungen WHERE beleg_id = ?", (b["id"],)).fetchone()[0] == "TX42"
 
 
-# ------------------------------------------------------------------ Lizenz & Update
-
-
-def test_lizenz():
-    key = ed25519.Ed25519PrivateKey.generate()
-    priv = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
-    pub = key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-    s = lizenz.ausstellen(priv, "Café Muster", "ATU1", "2099-12-31")
-    assert lizenz.pruefen(s, pub)["status"] == "gueltig"
-    assert lizenz.pruefen(s[:-3] + "AAA", pub)["status"] == "ungueltig"
-    assert lizenz.pruefen(lizenz.ausstellen(priv, "X", "", "2000-01-01"), pub)["status"] == "abgelaufen"
-    assert lizenz.pruefen(None, pub)["status"] == "fehlt"
+# ------------------------------------------------------------------ Update
 
 
 def test_update(monkeypatch, tmp_path):
@@ -309,6 +295,12 @@ def test_update(monkeypatch, tmp_path):
         update.herunterladen({**info, "sha256": "0" * 64}, tmp_path)
     info["version"] = "0.0.1"
     assert update.pruefen("https://example.at/update.json") is None
+    # Standardquelle (GitHub-Releases): nur Installer aus dem eigenen Repository
+    info["version"] = "99.0.0"
+    with pytest.raises(update.UpdateFehler):
+        update.pruefen(None)
+    info["url"] = f"{update.RELEASES_SEITE}/download/v99.0.0/Registrierkasse-Setup-99.0.0.exe"
+    assert update.pruefen(None)["version"] == "99.0.0"
 
 
 def test_bmd_gutscheine(api, tmp_path):
@@ -334,3 +326,10 @@ def test_storno_bar_rechnung(api):
     ok(api.storno(bar["beleg"]["id"]))
     d = next(x for x in ok(api.dokumente("Rechnung")) if x["id"] == bar["id"])
     assert d["status"] == "storniert"
+
+
+def test_selbsttest():
+    from kasse.selbsttest import ausfuehren
+
+    zeilen = []
+    assert ausfuehren(zeilen.append), "\n".join(zeilen)

@@ -36,6 +36,7 @@ jobs:
           KASSE_NICHT_OEFFNEN: "1"
         run: |
           $cli = "dist/Registrierkasse/kasse-cli.exe"
+          & $cli selbsttest; if ($LASTEXITCODE) { throw "Selbsttest des gebündelten Programms fehlgeschlagen" }
           & $cli init WIN-TEST; if ($LASTEXITCODE) { exit 1 }
           & $cli startbeleg; if ($LASTEXITCODE) { exit 1 }
           & $cli nullbeleg --art Monatsbeleg; if ($LASTEXITCODE) { exit 1 }
@@ -81,6 +82,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: Registrierkasse ${{ steps.version.outputs.version }}
+          body: |
+            **Installation:** `Registrierkasse-Setup-${{ steps.version.outputs.version }}.exe` herunterladen und ausführen.
+            Bestehende Kassen erkennen das Update automatisch (Einstellungen → Updates); vorher wird eine Sicherung erstellt.
+            Nach der Installation: Einstellungen → Updates → *Selbsttest*.
+          generate_release_notes: true
           files: |
             dist/Registrierkasse-Setup-*.exe
             dist/update.json

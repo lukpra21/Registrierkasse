@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "registrierkasse"
-version = "0.2.0"
+version = "0.3.0"
 description = "RKSV-konforme Registrierkasse für KMU (Österreich) mit A-Trust-Onlinesignatur, Bondrucker und A4-Rechnungen"
 requires-python = ">=3.11"
 readme = "README.md"

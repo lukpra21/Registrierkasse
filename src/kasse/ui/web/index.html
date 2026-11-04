@@ -260,10 +260,11 @@
           <div class="zweispaltig"><label>Erlöse 19 %<input name="konto_erloes_19"></label><label>Gutscheine (Verbindl.)<input name="konto_gutschein"></label></div>
           <p class="hinweis">Kontonummern mit dem Steuerberater abstimmen.</p>
         </fieldset>
-        <fieldset><legend>Lizenz &amp; Updates</legend>
-          <p class="hinweis" id="lizenz-info">–</p>
-          <div class="geheim" id="lizenz-feld"><label>Lizenzschlüssel<input id="lizenz-schluessel"></label><button class="btn ghost" type="button" id="lizenz-ok">Eintragen</button></div>
-          <label>Update-Adresse<input name="update_url" placeholder="https://…/update.json"></label>
+        <fieldset><legend>Updates</legend>
+          <p class="hinweis" id="version-info">–</p>
+          <p class="hinweis">Die Kasse sucht bei jedem Start automatisch nach neuen Versionen auf GitHub.
+            Vor der Installation wird eine Sicherung erstellt; die Kassendaten bleiben erhalten.</p>
+          <button class="btn ghost" type="button" id="btn-selbsttest">Selbsttest (PDF, Bon, Export, Sicherung)</button>
           <p class="hinweis" id="update-info">–</p>
           <div class="zeile"><button class="btn ghost" type="button" id="update-pruefen">Nach Updates suchen</button>
             <button class="btn" type="button" id="update-installieren" hidden>Update installieren</button></div>

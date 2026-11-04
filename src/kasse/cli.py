@@ -150,6 +150,12 @@ def cmd_export(args):
     print(export.paket(_con(args), args.von, args.bis, args.ziel))
 
 
+def cmd_selbsttest(args):
+    from .selbsttest import ausfuehren
+
+    return 0 if ausfuehren() else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="kasse", description="Registrierkasse (RKSV)")
     ap.add_argument("--datenbank", help="Pfad zur Kassendatenbank (Standard: Benutzer-Datenverzeichnis)")
@@ -219,6 +225,9 @@ def main(argv=None):
     p.add_argument("bis")
     p.add_argument("ziel")
     p.set_defaults(f=cmd_export)
+
+    sub.add_parser("selbsttest", help="alle Ausgabewege mit einer Testkasse prüfen (PDF, Bon, Export, Sicherung)") \
+        .set_defaults(f=cmd_selbsttest)
 
     args = ap.parse_args(argv)
     from .geheim import GeheimFehler
