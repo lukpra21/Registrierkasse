@@ -24,7 +24,7 @@ from pathlib import Path
 from .. import (__version__, benutzer, db, dokumente, ebinterface, export, geheim, gutscheine, kassenbuch,
                 lizenz, mail, sicherung, terminal, update)
 from ..config import datenverzeichnis
-from ..geld import euro_zu_cent, netto_aus_brutto
+from ..geld import anzeige, euro_zu_cent, netto_aus_brutto
 from ..rksv import Kasse, KassenFehler, Position, SignaturFehler
 from ..rksv.dep import dep_export_datei
 from ..rksv.signatur import signer_aus_einstellungen, signer_testen
@@ -126,6 +126,8 @@ class KassenApi:
 
     @staticmethod
     def _oeffnen(pfad: Path) -> None:
+        if os.environ.get("KASSE_NICHT_OEFFNEN"):  # Tests/Server-Betrieb
+            return
         if sys.platform == "win32":
             os.startfile(str(pfad))  # type: ignore[attr-defined]
         elif sys.platform == "darwin":
@@ -375,10 +377,10 @@ class KassenApi:
                 pos.append(Position(f"Wertgutschein {code}", Decimal(1), wert, "0"))
                 continue
             if typ == "gutschein_einloesung":
-                betrag = int(p["preis_cent"])
+                betrag = abs(int(p["preis_cent"]))  # Oberfläche liefert den Abzug negativ
                 g = gutscheine.pruefen(self.con, p["code"])
-                if betrag <= 0 or betrag > g["rest_cent"]:
-                    raise KassenFehler(f"Gutschein {g['code']}: maximal {g['rest_cent'] / 100:.2f} € einlösbar")
+                if betrag == 0 or betrag > g["rest_cent"]:
+                    raise KassenFehler(f"Gutschein {g['code']}: maximal {anzeige(g['rest_cent'])} € einlösbar")
                 if gutschein_codes is not None:
                     gutschein_codes.setdefault("einloesung", []).append((g["code"], betrag))
                 pos.append(Position(f"Gutschein {g['code']} eingelöst", Decimal(1), -betrag, "0"))
@@ -681,18 +683,19 @@ class KassenApi:
         bis = _datum(bis)
         von = _datum(von, dt.date.fromisoformat(bis) - dt.timedelta(days=29))
         filt = "substr(b.zeitpunkt, 1, 10) BETWEEN ? AND ? AND b.art IN ('Barumsatz', 'Storno')"
+        ohne_gs = "p.bezeichnung NOT LIKE 'Wertgutschein %' AND p.bezeichnung NOT LIKE 'Gutschein % eingelöst'"
         summe_b = "(b.betrag_normal + b.betrag_ermaessigt1 + b.betrag_ermaessigt2 + b.betrag_null + b.betrag_besonders)"
         tage = self.con.execute(f"SELECT substr(b.zeitpunkt, 1, 10) AS tag, SUM({summe_b}) AS umsatz,"
                                 f" SUM(CASE WHEN b.art = 'Barumsatz' THEN 1 ELSE 0 END) AS belege FROM belege b"
                                 f" WHERE {filt} GROUP BY tag ORDER BY tag", (von, bis)).fetchall()
         artikel = self.con.execute(
             f"SELECT p.bezeichnung AS name, SUM(CAST(p.menge AS REAL)) AS menge, SUM(p.summe_cent) AS umsatz"
-            f" FROM belegpositionen p JOIN belege b ON b.id = p.beleg_id WHERE {filt} AND p.einzelpreis_cent > 0"
+            f" FROM belegpositionen p JOIN belege b ON b.id = p.beleg_id WHERE {filt} AND {ohne_gs}"
             f" GROUP BY p.bezeichnung ORDER BY umsatz DESC LIMIT 15", (von, bis)).fetchall()
         gruppen = self.con.execute(
             f"SELECT COALESCE(g.name, 'Ohne Gruppe') AS name, SUM(p.summe_cent) AS umsatz FROM belegpositionen p"
             f" JOIN belege b ON b.id = p.beleg_id LEFT JOIN artikel a ON a.id = p.artikel_id"
-            f" LEFT JOIN warengruppen g ON g.id = a.warengruppe_id WHERE {filt} GROUP BY 1 ORDER BY umsatz DESC",
+            f" LEFT JOIN warengruppen g ON g.id = a.warengruppe_id WHERE {filt} AND {ohne_gs} GROUP BY 1 ORDER BY umsatz DESC",
             (von, bis)).fetchall()
         stunden = self.con.execute(
             f"SELECT CAST(substr(b.zeitpunkt, 12, 2) AS INTEGER) AS stunde, SUM({summe_b}) AS umsatz,"
@@ -866,7 +869,9 @@ class KassenApi:
 
     @_api()
     def einstellungen(self):
-        return {k: self._e(k, "") for k in EINSTELLUNGEN}
+        standard = {**export.STANDARD_KONTEN, "sicherung_intervall_stunden": "24", "sicherung_behalten": "30",
+                    "smtp_port": "587", "auto_abmelden_min": "0", "nach_verkauf": "dialog"}
+        return {k: self._e(k, "") or standard.get(k, "") for k in EINSTELLUNGEN}
 
     @_api(recht="chef")
     def einstellungen_speichern(self, werte: dict):

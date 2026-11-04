@@ -1,0 +1,65 @@
+name: Windows-Installer
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Abhängigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[alles,dev]" pyinstaller
+      - name: Tests
+        run: python -m pytest -q
+      - name: Version ermitteln
+        id: version
+        shell: bash
+        run: echo "version=$(python packaging/versionsdatei.py)" >> "$GITHUB_OUTPUT"
+      - name: Programm bündeln (PyInstaller)
+        run: pyinstaller --noconfirm --distpath dist --workpath build packaging/registrierkasse.spec
+      - name: SumatraPDF beilegen (stilles A4-Drucken, optional)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.zip" -OutFile sumatra.zip
+          Expand-Archive sumatra.zip -DestinationPath sumatra
+          Copy-Item (Get-ChildItem sumatra -Filter *.exe | Select-Object -First 1).FullName dist/Registrierkasse/SumatraPDF.exe
+      - name: Installer bauen (Inno Setup)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DVersion=${{ steps.version.outputs.version }}" packaging/registrierkasse.iss
+      - name: Update-Information erzeugen
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          $datei = "dist/Registrierkasse-Setup-$v.exe"
+          $hash = (Get-FileHash $datei -Algorithm SHA256).Hash.ToLower()
+          $url = "https://github.com/${{ github.repository }}/releases/download/v$v/Registrierkasse-Setup-$v.exe"
+          @{ version = $v; url = $url; sha256 = $hash; hinweis = "Neue Version $v" } | ConvertTo-Json | Set-Content -Encoding utf8 dist/update.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Registrierkasse-Setup-${{ steps.version.outputs.version }}
+          path: |
+            dist/Registrierkasse-Setup-*.exe
+            dist/update.json
+      - name: Release veröffentlichen
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Registrierkasse-Setup-*.exe
+            dist/update.json

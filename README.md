@@ -1,143 +1,122 @@
 # Registrierkasse für KMU
 
-RKSV-konforme Registrierkasse für Notebooks (Windows) mit
-- **A-Trust a.sign RK Online** (digitale Lizenz) als Signaturerstellungseinheit,
-- **Bondrucker** (80 mm, ESC/POS, USB) für das Tagesgeschäft,
-- **A4-Lieferscheinen und -Rechnungen** für Geschäftskunden,
-- **automatischer Datensicherung** (inkl. DEP-Export),
-- einmaligem **Import aus QRK** (Firmendaten, Steuersätze, Warengruppen, Artikel).
+RKSV-konforme Registrierkasse für Windows-Notebooks mit moderner Glas-Oberfläche:
+A-Trust-Onlinesignatur, Bondrucker und A4-Rechnungen, Kartenzahlung per Smartphone,
+Kassenbuch, Benutzer mit PIN, verschlüsselte Datensicherung und Export für den Steuerberater.
 
 > Das Programm enthält keine Kunden- oder Kassendaten. Diese liegen ausschließlich
-> lokal im Datenverzeichnis des Benutzers (`%APPDATA%\Registrierkasse`) und werden
-> per `.gitignore` aus dem Repository ferngehalten.
+> lokal unter `%APPDATA%\Registrierkasse`; Passwörter in der Windows-Anmeldeinformationsverwaltung.
 
-## Stand
+## Funktionen
 
-| Bereich | Status |
+| Bereich | Inhalt |
 |---|---|
-| RKSV-Kern: Belegkette, Umsatzzähler (AES-256-ICM), JWS/ES256, Start-/Null-/Monats-/Jahres-/Schlussbeleg, Storno, Training | ✅ mit Tests |
-| Ausfall der Signatureinheit → Kennzeichnung + automatischer Sammelbeleg | ✅ mit Tests |
-| DEP7-Export | ✅ |
-| A-Trust Online-Anbindung (REST) | ⚠️ implementiert, Test gegen A-Trust-Testumgebung ausständig |
-| Bondruck ESC/POS inkl. QR-Code | ✅ (Test mit Dummy-Drucker) |
-| A4-Lieferschein/-Rechnung (PDF), Sammelrechnung aus Lieferscheinen | ✅ |
-| QRK-Import | ✅ (gegen nachgebaute QRK-DB getestet, echte Sicherung ausständig) |
-| Automatische Datensicherung mit Rotation, Integritätsprüfung, Windows-Aufgabenplanung | ✅ |
-| Kassenoberfläche im Glas-Design (Kassa, Belege, Rechnungen, Artikel, Abschluss, Einstellungen) | ✅ |
-| Ausgabe nach jedem Verkauf: Bon / A4 (Druckerwahl) / PDF | ✅ |
-| EPC-QR-Code (Überweisung per Banking-App) auf A4-Rechnungen | ✅ |
-| Kartenzahlung über Tap-to-Pay-App (manuelle Bestätigung) | ✅ – direkte Terminal-Anbindung folgt nach Anbieterwahl |
+| **RKSV** | Belegkette, Umsatzzähler (AES-256-ICM), JWS/ES256, Start-/Null-/Monats-/Jahres-/Schlussbeleg, Storno, Training, Ausfall mit Sammelbeleg, Hinweis bei Ausfall > 48 h, DEP7-Export |
+| **Signatur** | A-Trust a.sign RK Online (Passwort im Windows-Tresor), Verbindungstest; lokaler Test-Signer für Entwicklung |
+| **Kassa** | Artikelkacheln, Barcode, Rabatt je Position oder auf den Einkauf, Bar mit Rückgeld, Karte, geteilte Zahlung (Bar + Karte), Wertgutscheine (Verkauf/Einlösung), Trainingsmodus, Kassenlade |
+| **Kartenzahlung** | manuell bestätigt (jede App / jedes Terminal) oder automatisch über Viva.com Tap to Pay (Cloud-Terminal-API) |
+| **Ausgabe** | nach jedem Verkauf Bon / A4 (Druckerwahl) / PDF / E-Mail; Logo auf A4 und optional am Bon |
+| **Geschäftskunden** | Kunden, Lieferscheine, Rechnungen, Sammelrechnung, offene/überfällige Rechnungen, Zahlungseingang, EPC-QR-Code, E-Rechnung ebInterface 6.1, E-Mail-Versand |
+| **Benutzer** | PIN-Anmeldung, Rollen Chef/Kassier, automatisches Abmelden, Ereignisprotokoll |
+| **Kassenbuch** | Anfangsbestand, Einlagen/Entnahmen, Kassastand, Kassasturz (Zählprotokoll) mit Differenzbuchung |
+| **Lager** | Lagerstand, Mindestbestand, Wareneingang, Hinweis „nachbestellen“ |
+| **Auswertung** | Tagesbericht, Statistik (Umsatz je Tag/Monat, Top-Artikel, Warengruppen, Uhrzeit) |
+| **Steuerberater** | ZIP mit Belegen (CSV), Rechnungen (CSV), BMD-Buchungen (Tageslosungen) und DEP |
+| **Sicherung** | automatisch (Start, alle 30 min geprüft, Monatsbeleg, Windows-Aufgabe), AES-256-verschlüsselt, Rotation, Wiederherstellung |
+| **Betrieb** | Windows-Installer, automatische Updates mit Prüfsumme, Lizenzschlüssel (Ed25519), eigenes Logo/Akzentfarbe |
+| **Import** | einmalig aus QRK: Firmendaten, Steuersätze, Warengruppen, Artikel |
 
-## Installation (Entwicklung)
+## Installation
+
+**Für Anwender:** `Registrierkasse-Setup-<version>.exe` ausführen (aus den GitHub-Releases bzw.
+dem Build-Workflow). Optional: Desktop-Symbol, Autostart, tägliche Sicherung um 21:00.
+
+**Für Entwicklung:**
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-pip install -e .[dev]
+.venv\Scripts\activate
+pip install -e .[alles,dev]
 pytest
+kasse-ui              # Programmfenster (Edge WebView2)
+kasse-ui --browser    # im Browser (nur 127.0.0.1)
 ```
 
-## Kasse starten
+## Erste Schritte
 
-```bash
-pip install -e .[alles]
-kasse-ui              # eigenes Programmfenster (Edge WebView2, unter Windows 10/11 vorinstalliert)
-kasse-ui --browser    # alternativ im Browser (nur lokal auf 127.0.0.1)
-```
-
-Beim ersten Start führt die Oberfläche durch Einrichtung (Kassen-ID, A-Trust) und Startbeleg.
-
-### Drucken
-
-- **Bondrucker**: mit dem Windows-Treiber installieren (z. B. „POS-80“), in *Einstellungen → Drucker*
-  auswählen und mit „Testdruck Bon“ prüfen. Die Kasse sendet ESC/POS-Rohdaten über den Treiber.
-- **A4**: jeder installierte Windows-Drucker. Für stilles Drucken auf einen bestimmten Drucker
-  wird das kostenlose [SumatraPDF](https://www.sumatrapdfreader.org/) empfohlen (wird automatisch gefunden,
-  Pfad notfalls über `KASSE_SUMATRA`).
-- **PDF**: wird unter `%APPDATA%\Registrierkasse\dokumente` abgelegt und geöffnet.
-
-Nach jedem Verkauf erscheint die Auswahl **Bon / A4 / PDF** samt Druckerwahl
-(abschaltbar unter *Einstellungen → Nach dem Kassieren*).
-
-### Kartenzahlung
-
-Die Kasse bucht Kartenzahlungen als eigene Zahlungsart (RKSV-Beleg wie Barumsatz).
-Der Betrag wird mit einer Tap-to-Pay-App am Smartphone kassiert und danach in der Kasse bestätigt.
-Eine direkte Anbindung (Betrag wird automatisch ans Handy gesendet) folgt, sobald der Anbieter feststeht.
-
-## Ablauf: Umstieg von QRK
-
-1. **QRK abschließen:** in QRK den DEP-Export erstellen und sichern (7 Jahre aufbewahren),
-   Schlussbeleg erstellen, alte Kasse in FinanzOnline außer Betrieb nehmen.
-2. **Neue Kasse einrichten**, zunächst gegen die A-Trust-Testumgebung:
-   ```bash
-   kasse init KASSE-01 --signer atrust --atrust-benutzer <BENUTZER> --atrust-umgebung test
-   set KASSE_ATRUST_PASSWORT=<PASSWORT>
-   ```
-   AES-Schlüssel und Prüfwert werden ausgegeben → in FinanzOnline registrieren.
+1. **QRK abschließen:** DEP-Export sichern (7 Jahre aufbewahren), Schlussbeleg, alte Kasse in FinanzOnline außer Betrieb nehmen.
+2. **Kasse einrichten** (Assistent beim ersten Start): Kassen-ID, A-Trust-Zugang (zuerst *Testumgebung*).
+   AES-Schlüssel und Prüfwert in FinanzOnline registrieren.
 3. **Daten aus QRK übernehmen:**
    ```bash
-   kasse import-qrk D:\Downloads\qrk_20261028-1 --inspizieren   # nur Schema anzeigen
-   kasse import-qrk D:\Downloads\qrk_20261028-1 --probelauf     # anzeigen, nichts schreiben
-   kasse import-qrk D:\Downloads\qrk_20261028-1                 # übernehmen
-   kasse artikel
+   kasse-cli import-qrk D:\Downloads\qrk_20261028-1 --inspizieren
+   kasse-cli import-qrk D:\Downloads\qrk_20261028-1 --probelauf
+   kasse-cli import-qrk D:\Downloads\qrk_20261028-1
    ```
-4. **Startbeleg** erstellen und mit der **BMF Belegcheck-App** prüfen:
-   `kasse startbeleg --drucken`
-5. Drucker und Sicherung konfigurieren (siehe unten).
+4. **Startbeleg** erstellen und mit der **BMF-Belegcheck-App** prüfen.
+5. **Einstellungen:** Firmendaten, Logo, Bondrucker + Testdruck, Kassenlade, A4-Drucker, Sicherungsordner
+   und Sicherungspasswort, Benutzer (der erste ist Chef), E-Mail, Kartenzahlung.
+6. **Einstellungen → A-Trust → Verbindung testen**, danach auf *Produktiv* umstellen.
 
-## Einstellungen
+## Drucken
 
-```bash
-kasse set firma_name "Muster GmbH"
-kasse set firma_adresse "Hauptstraße 1\n1010 Wien"
-kasse set firma_uid ATU12345678
-kasse set firma_iban AT00...
-kasse set bon_fusszeile "Danke für Ihren Einkauf!"
+- **Bondrucker** mit Windows-Treiber (z. B. „POS-80“) auswählen; die Kasse sendet ESC/POS über den Treiber.
+  Kassenlade am Bondrucker: *Einstellungen → Drucker & Kassenlade*.
+- **A4** auf jedem installierten Drucker; der Installer legt SumatraPDF für stilles Drucken bei.
+- **PDF** landet unter `%APPDATA%\Registrierkasse\dokumente`.
 
-# Bondrucker über Windows-Treiber (empfohlen)
-kasse set bondrucker_art windows
-kasse set bondrucker_name "EPSON TM-T20III Receipt"
-# alternativ direkt per USB (WinUSB/libusb-Treiber nötig)
-kasse set bondrucker_art usb
-kasse set bondrucker_vendor 04b8
-kasse set bondrucker_product 0e28
+## Kartenzahlung
 
-# Datensicherung
-kasse set sicherung_ziel "E:\Kassensicherung"     # USB-Stick/NAS/OneDrive – nicht dasselbe Laufwerk!
-kasse set sicherung_behalten 30
-kasse sicherung-planen --uhrzeit 21:00            # tägliche Windows-Aufgabe
-kasse sicherung                                   # sofort sichern
+- **Manuell:** Betrag in einer beliebigen Tap-to-Pay-App bzw. am Terminal kassieren, in der Kasse bestätigen.
+- **Viva.com (automatisch):** In der Viva-Terminal-App am Smartphone anmelden; im Viva-Händlerportal
+  API-Zugang (Client-ID/Secret) und Terminal-ID erzeugen und unter *Einstellungen → Kartenzahlung* eintragen.
+  Zuerst mit einem **Demo-Konto** testen – Endpunkte siehe `src/kasse/terminal.py`.
+
+## Updates & Lizenz
+
+- Der Build-Workflow erzeugt bei einem Tag `v*` den Installer und `update.json`.
+  Die URL der `update.json` unter *Einstellungen → Lizenz & Updates* eintragen. Bei einem **privaten**
+  Repository muss die Datei öffentlich erreichbar abgelegt werden (z. B. eigener Webspace).
+- Lizenzschlüssel: `python tools/lizenz.py init --privat <pfad>` (einmalig, Hersteller), dann
+  `python tools/lizenz.py ausstellen …`. Eine fehlende Lizenz blockiert die Kasse **nie** (RKSV-Pflichten).
+
+## Kommandozeile (`kasse-cli`)
+
+```text
+init, info, set, import-qrk, artikel, startbeleg, nullbeleg, verkauf, dep-export,
+sicherung, sicherung-planen, atrust-test, passwort, export
 ```
 
-Das A-Trust-Passwort wird **nicht** in der Datenbank gespeichert, sondern aus der
-Umgebungsvariable `KASSE_ATRUST_PASSWORT` gelesen.
+## RKSV-Pflichten im Betrieb
 
-## RKSV-Pflichten im Betrieb (Erinnerung)
-
-- **Monatsbeleg** am Monatsende: `kasse nullbeleg --art Monatsbeleg` (sichert automatisch)
-- **Jahresbeleg** (= Dezember-Monatsbeleg): mit Belegcheck-App prüfen, Sicherung extern verwahren
-- Ausfall der Signatureinheit > 48 h → Meldung in FinanzOnline
-- DEP und Belege 7 Jahre aufbewahren
+- **Monatsbeleg** am Monatsende (Hinweis in der Kopfzeile), **Jahresbeleg** im Dezember mit Belegcheck prüfen
+- Ausfall der Signatureinheit > 48 h → Meldung in FinanzOnline (die Kasse weist darauf hin)
+- DEP und Belege 7 Jahre aufbewahren (Sicherungen extern verwahren)
 
 ## Architektur
 
 ```
 src/kasse/
-  rksv/krypto.py     Umsatzzähler, Verkettung, JWS-Hilfen
-  rksv/signatur.py   A-Trust Online, lokaler Test-Signer
-  rksv/kasse.py      Belegerstellung, Storno, Training, Ausfall, Sonderbelege
-  rksv/dep.py        DEP7-Export
-  dokumente.py       Lieferscheine, Rechnungen, Sammelrechnungen
-  printing/bon.py    ESC/POS-Bon mit QR-Code
-  printing/a4.py     A4-PDF (reportlab)
-  importer/qrk.py    QRK-Import (nur lesend)
-  sicherung.py       automatische Datensicherung
-  cli.py             Kommandozeile
-  ui/api.py          Schnittstelle Oberfläche ↔ Kassenkern
-  ui/app.py          Programmfenster (pywebview) bzw. lokaler Server
-  ui/web/            Oberfläche (HTML/CSS/JS, Glas-Design, hell/dunkel)
+  rksv/           Belegkern, Krypto, Signatur (A-Trust/Test), DEP
+  benutzer.py     PIN/Rollen          kassenbuch.py   Kassastand, Zählprotokoll
+  gutscheine.py   Wertgutscheine      dokumente.py    Lieferscheine, Rechnungen
+  terminal.py     Kartenterminal      mail.py         E-Mail-Versand
+  ebinterface.py  E-Rechnung          export.py       Steuerberater/BMD
+  sicherung.py    Sicherung           geheim.py       Windows-Anmeldeinformationsverwaltung
+  lizenz.py       Lizenzschlüssel     update.py       Updates
+  printing/       Bon (ESC/POS), A4 (PDF)
+  importer/qrk.py QRK-Import          ui/             Oberfläche (pywebview + HTML/CSS/JS)
+packaging/        PyInstaller, Inno Setup, Programmsymbol
+tools/lizenz.py   Lizenzwerkzeug (Hersteller)
+.github/workflows Tests (Windows + Linux), Installer-Build
 ```
 
-Rechtlicher Hinweis: Die RKSV-Konformität ist vor dem Echtbetrieb mit der
-A-Trust-Testumgebung, der BMF Belegcheck-App und dem Steuerberater zu prüfen.
+## Vor dem Echtbetrieb prüfen
+
+Diese Punkte lassen sich nur mit echten Zugängen bzw. Geräten testen:
+
+- A-Trust-Anbindung gegen die Testumgebung, danach alle Belegtypen mit der BMF-Belegcheck-App
+- Viva.com Cloud-Terminal mit Demo-Konto
+- Bondrucker, Kassenlade und A4-Druck am Notebook
+- ebInterface-Datei mit dem offiziellen Validator; BMD-Feldbelegung und Konten mit dem Steuerberater
+- umsatzsteuerliche Behandlung von Gutscheinen mit dem Steuerberater

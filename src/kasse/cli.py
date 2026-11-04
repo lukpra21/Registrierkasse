@@ -27,6 +27,8 @@ def cmd_init(args):
         db.setze_einstellung(con, "atrust_benutzer", args.atrust_benutzer or "")
         db.setze_einstellung(con, "atrust_umgebung", args.atrust_umgebung)
     con.commit()
+    if args.signer == "atrust":
+        print("A-Trust-Passwort danach mit 'kasse passwort atrust' speichern.")
     print(f"Kasse '{args.kassen_id}' eingerichtet.")
     print("Für die Registrierung in FinanzOnline:")
     print(f"  AES-Schlüssel: {schluessel}")
@@ -123,6 +125,31 @@ def cmd_artikel(args):
         print(f"{r['artikelnummer'] or '-':>8}  {r['name'][:40]:40} {anzeige(r['brutto_cent']):>10}  {r['steuer_prozent']:>3} %  {r['gruppe'] or ''}")
 
 
+def cmd_atrust_test(args):
+    from .rksv.signatur import signer_testen
+
+    con = _con(args)
+    r = signer_testen(signer_aus_einstellungen(con))
+    print(f"Zertifikat-Seriennummer: {r['seriennummer']}")
+    print(f"Signatur gültig:         {'ja' if r['signatur_gueltig'] else 'NEIN'}")
+    return 0 if r["signatur_gueltig"] else 1
+
+
+def cmd_passwort(args):
+    import getpass
+
+    from . import geheim
+
+    geheim.schreiben(args.name, getpass.getpass(f"{args.name}-Passwort: "))
+    print("Gespeichert (Windows-Anmeldeinformationsverwaltung).")
+
+
+def cmd_export(args):
+    from . import export
+
+    print(export.paket(_con(args), args.von, args.bis, args.ziel))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="kasse", description="Registrierkasse (RKSV)")
     ap.add_argument("--datenbank", help="Pfad zur Kassendatenbank (Standard: Benutzer-Datenverzeichnis)")
@@ -181,13 +208,26 @@ def main(argv=None):
     p.add_argument("--uhrzeit", default="21:00")
     p.set_defaults(f=cmd_sicherung_planen)
 
+    sub.add_parser("atrust-test", help="Verbindung zu A-Trust prüfen (Zertifikat + Testsignatur)").set_defaults(f=cmd_atrust_test)
+
+    p = sub.add_parser("passwort", help="Passwort sicher speichern (atrust, sicherung, smtp, viva)")
+    p.add_argument("name", choices=["atrust", "sicherung", "smtp", "viva"])
+    p.set_defaults(f=cmd_passwort)
+
+    p = sub.add_parser("export", help="Export für den Steuerberater (ZIP)")
+    p.add_argument("von")
+    p.add_argument("bis")
+    p.add_argument("ziel")
+    p.set_defaults(f=cmd_export)
+
     args = ap.parse_args(argv)
+    from .geheim import GeheimFehler
+
     try:
-        args.f(args)
-    except (KassenFehler, SignaturFehler, FileNotFoundError, ValueError) as e:
+        return args.f(args) or 0
+    except (KassenFehler, SignaturFehler, GeheimFehler, FileNotFoundError, ValueError) as e:
         print(f"Fehler: {e}", file=sys.stderr)
         return 1
-    return 0
 
 
 if __name__ == "__main__":

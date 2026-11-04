@@ -183,7 +183,10 @@ def windows_aufgabe_planen(uhrzeit: str = "21:00") -> str:
     """Legt eine tägliche Windows-Aufgabe 'Registrierkasse Sicherung' an."""
     if sys.platform != "win32":
         raise OSError("Aufgabenplanung nur unter Windows")
-    befehl = f'"{sys.executable}" -m kasse.cli sicherung'
+    if getattr(sys, "frozen", False):  # installierte Version: eigene Kommandozeilen-EXE
+        befehl = f'"{Path(sys.executable).with_name("kasse-cli.exe")}" sicherung'
+    else:
+        befehl = f'"{sys.executable}" -m kasse.cli sicherung'
     subprocess.run(
         ["schtasks", "/Create", "/F", "/SC", "DAILY", "/ST", uhrzeit,
          "/TN", "Registrierkasse Sicherung", "/TR", befehl],

@@ -1,9 +1,13 @@
 import datetime as dt
+import os
 
 import pytest
 
 from kasse import db
 from kasse.rksv import Kasse, LokalerTestSigner, SignaturFehler
+
+
+os.environ["KASSE_NICHT_OEFFNEN"] = "1"
 
 
 class Uhr:

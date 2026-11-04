@@ -21,3 +21,4 @@ dep-export*.json
 *.p12
 *.pfx
 .env
+packaging/version.txt
