@@ -204,7 +204,8 @@ def dokument_pdf(con: sqlite3.Connection, dok_id: int, ziel: Path | str) -> Path
     if ist_rechnung:
         kopf.append(f"Leistungsdatum: {d['datum']}")
 
-    daten = A4Daten(f"{d['typ']} {d['nummer']}", kopf, _empfaenger(k), pos, mit_preisen=ist_rechnung,
+    titel = f"{d['typ']} {d['nummer']}" + (" – STORNIERT" if d["storniert_am"] else "")
+    daten = A4Daten(titel, kopf, _empfaenger(k), pos, mit_preisen=ist_rechnung,
                     unterschrift=not ist_rechnung)
     if ist_rechnung:
         if d["zahlungsart"] in ("Überweisung", None):
@@ -216,6 +217,8 @@ def dokument_pdf(con: sqlite3.Connection, dok_id: int, ziel: Path | str) -> Path
             daten.zahlungstext = text
         else:
             daten.zahlungstext = f"Betrag dankend erhalten ({d['zahlungsart']})."
+        if d["storniert_am"]:
+            daten.hinweise.append(f"<b>Diese Rechnung wurde am {d['storniert_am']} storniert.</b>")
         if gesamt > 1_000_000 and not k["uid"]:
             daten.hinweise.append("<b>Hinweis:</b> Bei Beträgen über 10.000 € ist die UID des Empfängers anzugeben.")
         if d["beleg_id"]:
@@ -228,7 +231,8 @@ def beleg_pdf(con: sqlite3.Connection, beleg_id: int, ziel: Path | str) -> Path:
     """Kassenbeleg (Bon) im A4-Format."""
     e = lambda s: (einstellung(con, s, "") or "")  # noqa: E731
     b = con.execute("SELECT * FROM belege WHERE id = ?", (beleg_id,)).fetchone()
-    pos = [(r["pos"], r["bezeichnung"], r["menge"], "Stk", r["steuer_prozent"], r["einzelpreis_cent"], r["summe_cent"])
+    pos = [(r["pos"], r["bezeichnung"] + (f" (Rabatt −{anzeige(r['rabatt_cent'])} €)" if r["rabatt_cent"] else ""),
+            r["menge"], "Stk", r["steuer_prozent"], r["einzelpreis_cent"], r["summe_cent"])
            for r in con.execute("SELECT * FROM belegpositionen WHERE beleg_id = ? ORDER BY pos", (beleg_id,))]
     empf = None
     if b["kunde_id"]:

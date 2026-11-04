@@ -187,6 +187,10 @@ MIGRATIONEN = [
         text        TEXT
     );
     """,
+    # 2: Stornierte Rechnungen (Storno des zugehörigen Kassenbelegs)
+    """
+    ALTER TABLE dokumente ADD COLUMN storniert_am TEXT;
+    """,
 ]
 
 STANDARD_STEUERSAETZE = [

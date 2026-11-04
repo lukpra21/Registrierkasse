@@ -13,6 +13,11 @@ from ..db import einstellung
 from ..geld import anzeige
 from ..rksv.krypto import maschinenlesbarer_code
 
+
+def _ist_gutschein(bezeichnung: str) -> bool:
+    return bezeichnung.startswith("Wertgutschein ") or (
+        bezeichnung.startswith("Gutschein ") and bezeichnung.endswith(" eingelöst"))
+
 BREITE = 42  # Zeichen bei Font A auf 80-mm-Papier
 
 BELEG_TITEL = {
@@ -73,21 +78,27 @@ def bon_text(con: sqlite3.Connection, beleg_id: int) -> list[str]:
     z.append("-" * BREITE + "\n")
 
     steuern: dict[str, int] = {}
+    summen: list[int] = []
+    gutschein = False
     for p in con.execute("SELECT * FROM belegpositionen WHERE beleg_id = ? ORDER BY pos", (beleg_id,)):
         z.append(_zeile(p["bezeichnung"], anzeige(p["summe_cent"] + p["rabatt_cent"])))
         if p["menge"] not in ("1", "-1"):
             z.append(f"  {p['menge']} x {anzeige(p['einzelpreis_cent'])}\n")
         if p["rabatt_cent"]:
             z.append(_zeile("  Rabatt", anzeige(-p["rabatt_cent"])))
+        summen.append(p["summe_cent"])
+        if _ist_gutschein(p["bezeichnung"]):
+            gutschein = True
+            continue  # Gutscheine sind kein steuerbarer Umsatz – nicht in der USt-Aufstellung
         steuern[p["steuer_prozent"]] = steuern.get(p["steuer_prozent"], 0) + p["summe_cent"]
 
-    summe = sum(steuern.values())
+    summe = sum(summen)
     z.append("=" * BREITE + "\n")
     z.append(_zeile("SUMME EUR", anzeige(summe)))
     zahlungen = con.execute("SELECT art, betrag_cent FROM zahlungen WHERE beleg_id = ?", (beleg_id,)).fetchall()
     for zl in zahlungen:
         z.append(_zeile(f"Bezahlt: {zl['art']}", anzeige(zl["betrag_cent"])))
-    if not zahlungen and b["zahlungsart"]:
+    if not zahlungen and b["zahlungsart"] and summe:
         z.append(_zeile(f"Bezahlt: {b['zahlungsart']}", anzeige(summe)))
     if steuern:
         z.append("\n")
@@ -97,6 +108,8 @@ def bon_text(con: sqlite3.Connection, beleg_id: int) -> list[str]:
         for satz, brutto in sorted(steuern.items(), key=lambda kv: -float(kv[0])):
             netto = netto_aus_brutto(brutto, satz)
             z.append(_zeile(f"{satz:>3} %  {anzeige(netto):>10} {anzeige(brutto - netto):>8}", anzeige(brutto)))
+    if gutschein:
+        z.append("Wertgutschein: keine USt (Mehrzweckgutschein)\n")
     if b["ausfall"]:
         z.append("\nSicherheitseinrichtung ausgefallen\n")
     if b["art"] == "Training":

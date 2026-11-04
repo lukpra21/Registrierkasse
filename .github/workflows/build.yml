@@ -28,6 +28,27 @@ jobs:
         run: echo "version=$(python packaging/versionsdatei.py)" >> "$GITHUB_OUTPUT"
       - name: Programm bündeln (PyInstaller)
         run: pyinstaller --noconfirm --distpath dist --workpath build packaging/registrierkasse.spec
+      - name: Gebündeltes Programm unter Windows testen
+        shell: pwsh
+        env:
+          KASSE_DATENVERZEICHNIS: ${{ runner.temp }}\kassentest
+          KASSE_SICHERUNG_PASSWORT: Test-1234
+          KASSE_NICHT_OEFFNEN: "1"
+        run: |
+          $cli = "dist/Registrierkasse/kasse-cli.exe"
+          & $cli init WIN-TEST; if ($LASTEXITCODE) { exit 1 }
+          & $cli startbeleg; if ($LASTEXITCODE) { exit 1 }
+          & $cli nullbeleg --art Monatsbeleg; if ($LASTEXITCODE) { exit 1 }
+          & $cli sicherung; if ($LASTEXITCODE) { exit 1 }
+          if (-not (Get-ChildItem "$env:KASSE_DATENVERZEICHNIS\sicherungen\*.rksich")) { throw "Keine verschlüsselte Sicherung" }
+          & $cli dep-export dep.json; if ($LASTEXITCODE) { exit 1 }
+          python tools/dep_pruefen.py dep.json; if ($LASTEXITCODE) { exit 1 }
+          $p = Start-Process dist/Registrierkasse/Registrierkasse.exe -ArgumentList "--browser","--port","8799" -PassThru
+          Start-Sleep -Seconds 10
+          $r = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8799/api/status -Body '{"args":[]}'
+          Stop-Process -Id $p.Id -Force
+          if (-not $r.ok -or $r.daten.kassen_id -ne "WIN-TEST") { throw "Oberfläche antwortet nicht korrekt" }
+          Write-Host "Programmtest OK: Kasse $($r.daten.kassen_id), Version $($r.daten.version)"
       - name: SumatraPDF beilegen (stilles A4-Drucken, optional)
         continue-on-error: true
         shell: pwsh

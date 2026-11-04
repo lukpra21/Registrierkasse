@@ -154,7 +154,7 @@ class KassenApi:
             " AND CAST(lagerstand AS REAL) <= CAST(mindestbestand AS REAL)").fetchone()[0]
         offen = self.con.execute(
             "SELECT COUNT(*) FROM dokumente d JOIN kunden k ON k.id = d.kunde_id WHERE d.typ = 'Rechnung'"
-            " AND d.bezahlt_am IS NULL AND date(d.datum, '+' || k.zahlungsziel_tage || ' days') < date('now','localtime')"
+            " AND d.bezahlt_am IS NULL AND d.storniert_am IS NULL AND date(d.datum, '+' || k.zahlungsziel_tage || ' days') < date('now','localtime')"
         ).fetchone()[0]
         return {
             "version": __version__,
@@ -585,6 +585,10 @@ class KassenApi:
                              (gb["betrag_cent"], gb["gutschein_id"]))
             self.con.execute("INSERT INTO gutschein_buchungen VALUES (?,?,?)", (gb["gutschein_id"], sid, -gb["betrag_cent"]))
         self.con.commit()
+        # gehört der Beleg zu einer Rechnung, wird diese als storniert gekennzeichnet
+        self.con.execute("UPDATE dokumente SET storniert_am = ? WHERE beleg_id = ? AND typ = 'Rechnung'",
+                         (dt.date.today().isoformat(), beleg_id))
+        self.con.commit()
         orig = [Position(r["bezeichnung"], Decimal(r["menge"]), r["einzelpreis_cent"], r["steuer_prozent"], r["artikel_id"])
                 for r in self.con.execute("SELECT * FROM belegpositionen WHERE beleg_id = ?", (beleg_id,))]
         self._lager_buchen(orig, -1, "Storno")
@@ -817,7 +821,7 @@ class KassenApi:
              " FROM dokumente d JOIN kunden k ON k.id = d.kunde_id")
         args: list = []
         if typ == "offen":
-            q += " WHERE d.typ = 'Rechnung' AND d.bezahlt_am IS NULL"
+            q += " WHERE d.typ = 'Rechnung' AND d.bezahlt_am IS NULL AND d.storniert_am IS NULL"
         elif typ:
             q += " WHERE d.typ = ?"
             args.append(typ)
@@ -826,7 +830,8 @@ class KassenApi:
         for r in self.con.execute(q + " ORDER BY d.id DESC LIMIT 300", args):
             d = dict(r)
             if d["typ"] == "Rechnung":
-                d["status"] = "bezahlt" if d["bezahlt_am"] else ("ueberfaellig" if d["faellig"] < heute else "offen")
+                d["status"] = ("storniert" if d["storniert_am"] else "bezahlt" if d["bezahlt_am"]
+                               else "ueberfaellig" if d["faellig"] < heute else "offen")
             res.append(d)
         return res
 

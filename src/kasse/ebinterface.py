@@ -50,7 +50,7 @@ def erzeugen(con: sqlite3.Connection, dok_id: int, ziel: Path | str) -> Path:
     ET.register_namespace("", NS)
     root = ET.Element(f"{{{NS}}}Invoice", {
         "GeneratingSystem": "Registrierkasse", "DocumentType": "Invoice",
-        "InvoiceCurrency": "EUR", "Language": "ger"})
+        "InvoiceCurrency": "EUR", "Language": "de"})
     ET.SubElement(root, f"{{{NS}}}InvoiceNumber").text = d["nummer"]
     ET.SubElement(root, f"{{{NS}}}InvoiceDate").text = d["datum"]
     lief = ET.SubElement(root, f"{{{NS}}}Delivery")
@@ -62,9 +62,9 @@ def erzeugen(con: sqlite3.Connection, dok_id: int, ziel: Path | str) -> Path:
 
     empf = ET.SubElement(root, f"{{{NS}}}InvoiceRecipient")
     ET.SubElement(empf, f"{{{NS}}}VATIdentificationNumber").text = k["uid"] or "00000000"
-    if k["kundennummer"]:
-        ET.SubElement(empf, f"{{{NS}}}BillersInvoiceRecipientID").text = k["kundennummer"]
     _adresse(empf, k["name"], k["adresse"], k["email"])
+    if k["kundennummer"]:  # laut Schema nach der Adresse
+        ET.SubElement(empf, f"{{{NS}}}BillersInvoiceRecipientID").text = k["kundennummer"]
 
     details = ET.SubElement(root, f"{{{NS}}}Details")
     liste = ET.SubElement(details, f"{{{NS}}}ItemList")

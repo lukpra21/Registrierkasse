@@ -744,7 +744,7 @@ $("#belege-tabelle").addEventListener("click", async (e) => {
 
 /* ====================================================================== Kunden & Dokumente */
 
-const DOK_STATUS = { offen: '<span class="badge orange">offen</span>', ueberfaellig: '<span class="badge rot">überfällig</span>', bezahlt: '<span class="badge gruen">bezahlt</span>' };
+const DOK_STATUS = { storniert: '<span class="badge rot">storniert</span>', offen: '<span class="badge orange">offen</span>', ueberfaellig: '<span class="badge rot">überfällig</span>', bezahlt: '<span class="badge gruen">bezahlt</span>' };
 
 async function ladeDokumente() {
   const kunden = await api("kunden", $("#kunden-suche").value.trim());
@@ -759,10 +759,10 @@ async function ladeDokumente() {
     docs.map((d) => `<tr><td>${d.typ === "Lieferschein" && !d.verrechnet ? `<input type="checkbox" data-ls="${d.id}">` : ""}</td>
       <td><b>${esc(d.nummer)}</b>${d.gemailt_am ? ' <span class="mini" title="per E-Mail gesendet">✉</span>' : ""}</td><td>${datumDE(d.datum)}</td><td>${esc(d.kunde)}</td>
       <td>${d.typ === "Lieferschein" ? (d.verrechnet ? '<span class="badge gruen">verrechnet</span>' : '<span class="badge orange">nicht verrechnet</span>')
-        : `${DOK_STATUS[d.status] || ""} <span class="mini">${d.status === "bezahlt" ? datumDE(d.bezahlt_am) : `fällig ${datumDE(d.faellig)}`}</span>`}</td>
+        : `${DOK_STATUS[d.status] || ""} <span class="mini">${d.status === "storniert" ? datumDE(d.storniert_am) : d.status === "bezahlt" ? datumDE(d.bezahlt_am) : `fällig ${datumDE(d.faellig)}`}</span>`}</td>
       <td class="r">${euro(d.summe || 0)}</td>
       <td class="aktionen-zelle">
-        ${d.typ === "Rechnung" && d.status !== "bezahlt" ? `<button class="btn ghost" data-a="bezahlt" data-id="${d.id}" title="Als bezahlt markieren"><i data-i="check"></i></button>` : ""}
+        ${d.typ === "Rechnung" && !["bezahlt", "storniert"].includes(d.status) ? `<button class="btn ghost" data-a="bezahlt" data-id="${d.id}" title="Als bezahlt markieren"><i data-i="check"></i></button>` : ""}
         ${d.typ === "Rechnung" ? `<button class="btn ghost" data-a="xml" data-id="${d.id}" title="E-Rechnung ebInterface">XML</button>` : ""}
         <button class="btn ghost" data-a="aus" data-id="${d.id}"><i data-i="print"></i>Ausgabe</button></td></tr>`).join("")
     || `<tr><td colspan="7" style="text-align:center;color:var(--text-2);padding:40px">Keine Einträge.<br><small>Im Kassa-Bereich einen Kunden wählen und „Lieferschein“ oder „Rechnung“ drücken.</small></td></tr>`}</tbody>`;
@@ -1103,6 +1103,10 @@ async function ladeEinstellungen() {
   $("#bon-logo").checked = S.einstellungen.bon_logo === "1";
   $("#farbe-wahl").value = S.einstellungen.akzentfarbe || "#3b5bfd";
   $(".nur-viva").style.display = f.elements.karten_terminal.value === "viva" ? "" : "none";
+  await ladeEinstellungsListen();
+}
+/** Logo, Passwort-Status, Benutzer und Lizenz neu laden – ohne ungespeicherte Formulareingaben zu verwerfen. */
+async function ladeEinstellungsListen() {
   const b = await api("branding");
   $("#logo-vorschau").innerHTML = b.logo ? `<img src="${b.logo}" alt="Logo">` : "Kein Logo";
   const g = await api("geheimnisse");
@@ -1135,13 +1139,14 @@ $("#farbe-wahl").oninput = (e) => { $("#einstellungen-form").elements.akzentfarb
 $("#logo-datei").onchange = (e) => {
   const datei = e.target.files[0]; if (!datei) return;
   const r = new FileReader();
-  r.onload = () => sicher(async () => { await api("logo_setzen", r.result); toast("Logo gespeichert"); ladeEinstellungen(); ladeBranding(); });
+  r.onload = () => sicher(async () => { await api("logo_setzen", r.result); toast("Logo gespeichert"); ladeEinstellungsListen(); ladeBranding(); });
+  e.target.value = "";
   r.readAsDataURL(datei);
 };
-$("#logo-weg").onclick = () => sicher(async () => { await api("logo_setzen", null); ladeEinstellungen(); ladeBranding(); });
+$("#logo-weg").onclick = () => sicher(async () => { await api("logo_setzen", null); ladeEinstellungsListen(); ladeBranding(); });
 $$("[data-geheim]").forEach((el) => ($("button", el).onclick = () => sicher(async () => {
   await api("geheimnis_setzen", el.dataset.geheim, $("input", el).value);
-  $("input", el).value = ""; toast("Sicher gespeichert (Windows-Anmeldeinformationsverwaltung)"); ladeEinstellungen(); ladeStatus();
+  $("input", el).value = ""; toast("Sicher gespeichert (Windows-Anmeldeinformationsverwaltung)"); ladeEinstellungsListen(); ladeStatus();
 })));
 $("#btn-testdruck").onclick = () => sicher(async () => { await api("testdruck"); toast("Testdruck gesendet"); });
 $("#btn-atrust-test").onclick = () => sicher(async () => {
@@ -1157,7 +1162,7 @@ $("#btn-mailtest").onclick = async () => {
   const an = await eingabe("Testnachricht", { feld: "Empfänger", typ: "email", knopf: "Senden" });
   if (an) sicher(async () => { await api("mail_testen", an); toast("Testnachricht gesendet"); });
 };
-$("#lizenz-ok").onclick = () => sicher(async () => { const r = await api("lizenz_setzen", $("#lizenz-schluessel").value); toast(r.text); await ladeStatus(); ladeEinstellungen(); });
+$("#lizenz-ok").onclick = () => sicher(async () => { const r = await api("lizenz_setzen", $("#lizenz-schluessel").value); toast(r.text); await ladeStatus(); ladeEinstellungsListen(); });
 $("#update-pruefen").onclick = () => sicher(async () => { const u = await api("update_pruefen"); zeigeUpdate(u); toast(u ? `Update ${u.version} verfügbar` : "Die Kasse ist aktuell"); });
 $("#update-installieren").onclick = async () => {
   if (await bestaetigen("Update installieren?", "Vorher wird automatisch eine Sicherung erstellt. Die Kasse wird dabei neu gestartet.", "Installieren"))
@@ -1177,7 +1182,7 @@ function benutzerDialog(u) {
   $("#u-ok", m).onclick = () => sicher(async () => {
     await api("benutzer_speichern", { id: u.id, name: $("#u-name", m).value, rolle: $("#u-rolle", m).value, pin: $("#u-pin", m).value,
       aktiv: u.id ? $("#u-aktiv", m).checked : true });
-    schliessen(); toast("Benutzer gespeichert"); await ladeStatus(); ladeEinstellungen();
+    schliessen(); toast("Benutzer gespeichert"); await ladeStatus(); ladeEinstellungsListen();
   });
 }
 $("#btn-protokoll").onclick = () => sicher(async () => {

@@ -208,6 +208,12 @@ def test_ebinterface(api, tmp_path):
     assert root.find("eb:InvoiceRecipient/eb:Address/eb:ZIP", ns).text == "8970"
     assert len(root.findall("eb:Tax/eb:TaxItem", ns)) == 2
 
+    # gegen das offizielle Schema (AUSTRIAPRO ebInterface 6.1) prüfen
+    from lxml import etree
+
+    schema = etree.XMLSchema(etree.parse(str(Path(__file__).parent / "schemas" / "ebInterface6p1.xsd")))
+    assert schema.validate(etree.parse(str(pfad))), schema.error_log
+
 
 def test_mail(api, monkeypatch):
     r = _rechnung(api)
@@ -303,3 +309,28 @@ def test_update(monkeypatch, tmp_path):
         update.herunterladen({**info, "sha256": "0" * 64}, tmp_path)
     info["version"] = "0.0.1"
     assert update.pruefen("https://example.at/update.json") is None
+
+
+def test_bmd_gutscheine(api, tmp_path):
+    import datetime as dt
+
+    v = ok(api.verkaufen([{"typ": "gutschein_verkauf", "preis_cent": 3000}], "Bar"))
+    code = v["gutscheine"][0]
+    ok(api.verkaufen([_p(api, "2"), {"typ": "gutschein_einloesung", "code": code, "preis_cent": -500}], []))
+    heute = dt.date.today().isoformat()
+    zeilen = list(csv.reader(io.StringIO(export.bmd_buchungen(api.con, heute, heute).decode("cp1252")), delimiter=";"))[1:]
+    paare = {(z[1], z[2]): z[9] for z in zeilen}
+    assert paare[("2700", "3480")] == "30,00"      # Gutscheinverkauf: Kassa an Verbindlichkeit
+    assert paare[("3480", "4010")] == "5,00"       # Einlösung: Verbindlichkeit an Erlös 10 %
+    assert not any(z[1] == "2880" for z in zeilen)  # nichts auf das Kartenkonto
+
+
+def test_storno_bar_rechnung(api):
+    r = _rechnung(api)
+    beleg = api.con.execute("SELECT beleg_id FROM dokumente WHERE id = ?", (r["id"],)).fetchone()[0]
+    assert beleg is None  # Überweisung: kein Kassenbeleg
+    kid = api.con.execute("SELECT kunde_id FROM dokumente WHERE id = ?", (r["id"],)).fetchone()[0]
+    bar = ok(api.dokument_erstellen("Rechnung", kid, [_p(api, "2")], "Bar"))
+    ok(api.storno(bar["beleg"]["id"]))
+    d = next(x for x in ok(api.dokumente("Rechnung")) if x["id"] == bar["id"])
+    assert d["status"] == "storniert"

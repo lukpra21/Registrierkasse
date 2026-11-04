@@ -87,6 +87,15 @@ init, info, set, import-qrk, artikel, startbeleg, nullbeleg, verkauf, dep-export
 sicherung, sicherung-planen, atrust-test, passwort, export
 ```
 
+## Belegkette prüfen
+
+```bash
+python tools/dep_pruefen.py dep-export.json --aes <AES-Schlüssel>
+```
+
+Prüft jede Signatur, die lückenlose Verkettung und den verschlüsselten Umsatzzähler – z. B. vor der
+Übergabe an den Steuerberater oder nach einer Wiederherstellung.
+
 ## RKSV-Pflichten im Betrieb
 
 - **Monatsbeleg** am Monatsende (Hinweis in der Kopfzeile), **Jahresbeleg** im Dezember mit Belegcheck prüfen
@@ -108,6 +117,7 @@ src/kasse/
   importer/qrk.py QRK-Import          ui/             Oberfläche (pywebview + HTML/CSS/JS)
 packaging/        PyInstaller, Inno Setup, Programmsymbol
 tools/lizenz.py   Lizenzwerkzeug (Hersteller)
+tools/dep_pruefen.py  unabhängige Prüfung eines DEP-Exports (Signaturen, Verkettung, Umsatzzähler)
 .github/workflows Tests (Windows + Linux), Installer-Build
 ```
 

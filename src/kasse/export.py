@@ -30,6 +30,7 @@ STANDARD_KONTEN = {
     "konto_erloes_13": "4013",
     "konto_erloes_0": "4090",
     "konto_erloes_19": "4019",
+    "konto_gutschein": "3480",  # Verbindlichkeit aus ausgegebenen Gutscheinen
 }
 
 STEUERCODE = {"20": "1", "10": "1", "13": "1", "19": "1", "0": "0"}
@@ -68,7 +69,8 @@ def belege_csv(con: sqlite3.Connection, von: str, bis: str) -> bytes:
 
 
 def rechnungen_csv(con: sqlite3.Connection, von: str, bis: str) -> bytes:
-    kopf = ["Rechnungsnummer", "Datum", "Kunde", "UID Kunde", "Zahlungsart", "Netto", "USt", "Brutto", "Bezahlt am"]
+    kopf = ["Rechnungsnummer", "Datum", "Kunde", "UID Kunde", "Zahlungsart", "Netto", "USt", "Brutto", "Bezahlt am",
+            "Storniert am"]
     zeilen = []
     for d in con.execute(
         "SELECT d.*, k.name, k.uid FROM dokumente d JOIN kunden k ON k.id = d.kunde_id"
@@ -80,46 +82,79 @@ def rechnungen_csv(con: sqlite3.Connection, von: str, bis: str) -> bytes:
         brutto = sum(steuern.values())
         netto = sum(netto_aus_brutto(v, s) for s, v in steuern.items())
         zeilen.append([d["nummer"], d["datum"], d["name"], d["uid"] or "", d["zahlungsart"] or "",
-                       rksv_betrag(netto), rksv_betrag(brutto - netto), rksv_betrag(brutto), d["bezahlt_am"] or ""])
+                       rksv_betrag(netto), rksv_betrag(brutto - netto), rksv_betrag(brutto), d["bezahlt_am"] or "",
+                       d["storniert_am"] or ""])
     return _csv(zeilen, kopf)
 
 
+def _ist_gutschein(bezeichnung: str) -> str | None:
+    """'verkauf' bzw. 'einloesung' für Gutscheinpositionen, sonst None."""
+    if bezeichnung.startswith("Wertgutschein "):
+        return "verkauf"
+    if bezeichnung.startswith("Gutschein ") and bezeichnung.endswith(" eingelöst"):
+        return "einloesung"
+    return None
+
+
+def _aufteilen(betrag: int, schluessel: list[tuple[str, int]]) -> list[tuple[str, int]]:
+    """Teilt ``betrag`` anteilig nach den Gewichten auf; Rundungsrest an den letzten Anteil."""
+    gesamt = sum(g for _, g in schluessel)
+    res, rest = [], betrag
+    for i, (k, g) in enumerate(schluessel):
+        anteil = rest if i == len(schluessel) - 1 else (round(betrag * g / gesamt) if gesamt else 0)
+        rest -= anteil
+        res.append((k, anteil))
+    return res
+
+
 def bmd_buchungen(con: sqlite3.Connection, von: str, bis: str) -> bytes:
-    """Tageslosung je Tag, Zahlungsart und Steuersatz (Soll Kassa/Karte an Erlös)."""
+    """Tageslosung je Tag, Zahlungs- und Erlöskonto (Soll Kassa/Karte/Gutschein an Erlös/Gutschein).
+
+    Gutscheine: Verkauf = Verbindlichkeit (Konto ``konto_gutschein``, keine USt);
+    Einlösung = Soll ``konto_gutschein`` an Erlös mit dem Steuersatz der Ware.
+    """
     kopf = ["satzart", "konto", "gkonto", "belegnr", "belegdat", "buchsymbol", "buchcode",
             "prozent", "steuercode", "betrag", "steuer", "text"]
+    zahl_konto = {"Bar": _konto(con, "konto_kassa"), "Karte": _konto(con, "konto_karte"),
+                  "Gutschein": _konto(con, "konto_gutschein")}
     zeilen = []
     tage = con.execute(
         "SELECT DISTINCT substr(zeitpunkt, 1, 10) FROM belege WHERE art IN ('Barumsatz', 'Storno')"
         " AND substr(zeitpunkt, 1, 10) BETWEEN ? AND ? ORDER BY 1", (von, bis)).fetchall()
     for (tag,) in tage:
-        # Anteil je Zahlungsart, aufgeteilt nach Steuersätzen der Belege
-        verteilung: dict[tuple[str, str], int] = {}
+        # (Zahlungsart, Gegenkonto-Schlüssel, Steuersatz) -> Betrag
+        verteilung: dict[tuple[str, str, str], int] = {}
         for b in con.execute("SELECT * FROM belege WHERE art IN ('Barumsatz', 'Storno') AND substr(zeitpunkt, 1, 10) = ?",
                              (tag,)):
-            gesamt = sum(b[sp] for sp in SPALTEN.values())
-            zahlungen = con.execute("SELECT art, betrag_cent FROM zahlungen WHERE beleg_id = ?", (b["id"],)).fetchall()
-            if not zahlungen:
-                zahlungen = [(b["zahlungsart"] or "Bar", gesamt)]
-            # anteilige Aufteilung je Zahlungsart; Rundungsrest geht an die letzte Zahlung,
-            # damit die Summe je Steuersatz exakt stimmt
-            for satz, sp in SPALTEN.items():
-                if not b[sp]:
+            haben: dict[tuple[str, str], int] = {}  # (Gegenkonto-Schlüssel, Satz) -> Betrag
+            gutschein_zahlung = 0
+            for p in con.execute("SELECT * FROM belegpositionen WHERE beleg_id = ?", (b["id"],)):
+                art = _ist_gutschein(p["bezeichnung"])
+                if art == "einloesung":
+                    gutschein_zahlung -= p["summe_cent"]  # Position ist negativ
                     continue
-                rest = b[sp]
-                for i, (art, betrag) in enumerate(zahlungen):
-                    anteil = rest if i == len(zahlungen) - 1 else (round(b[sp] * betrag / gesamt) if gesamt else 0)
-                    rest -= anteil
-                    verteilung[(art, satz)] = verteilung.get((art, satz), 0) + anteil
+                schl = ("konto_gutschein", "0") if art == "verkauf" else (f"konto_erloes_{p['steuer_prozent']}", p["steuer_prozent"])
+                haben[schl] = haben.get(schl, 0) + p["summe_cent"]
+            zahlungen = [(z["art"], z["betrag_cent"]) for z in
+                         con.execute("SELECT art, betrag_cent FROM zahlungen WHERE beleg_id = ?", (b["id"],))]
+            if gutschein_zahlung:
+                zahlungen.append(("Gutschein", gutschein_zahlung))
+            if not zahlungen:
+                zahlungen = [(b["zahlungsart"] if b["zahlungsart"] in zahl_konto else "Bar", sum(haben.values()))]
+            for (schl, satz), betrag in haben.items():
+                for art, anteil in _aufteilen(betrag, zahlungen):
+                    k = (art, schl, satz)
+                    verteilung[k] = verteilung.get(k, 0) + anteil
         datum = f"{tag[8:10]}.{tag[5:7]}.{tag[0:4]}"
-        for (art, satz), brutto in sorted(verteilung.items()):
+        for (art, schl, satz), brutto in sorted(verteilung.items()):
             if not brutto:
                 continue
-            netto = netto_aus_brutto(brutto, satz)
-            konto = _konto(con, "konto_kassa" if art == "Bar" else "konto_karte")
-            zeilen.append(["0", konto, _konto(con, f"konto_erloes_{satz}"), tag.replace("-", ""), datum, "KA", "1",
-                           satz, STEUERCODE.get(satz, "1"), rksv_betrag(brutto), rksv_betrag(-(brutto - netto)),
-                           f"Tageslosung {art} {satz}%"])
+            gutschein = schl == "konto_gutschein"
+            netto = brutto if gutschein else netto_aus_brutto(brutto, satz)
+            text = f"Gutscheinverkauf {art}" if gutschein else f"Tageslosung {art} {satz}%"
+            zeilen.append(["0", zahl_konto.get(art, zahl_konto["Bar"]), _konto(con, schl), tag.replace("-", ""), datum,
+                           "KA", "1", "0" if gutschein else satz, "0" if gutschein else STEUERCODE.get(satz, "1"),
+                           rksv_betrag(brutto), rksv_betrag(-(brutto - netto)), text])
     return _csv(zeilen, kopf, encoding="cp1252")
 
 
