@@ -23,7 +23,10 @@ RKSV-konforme Registrierkasse für Notebooks (Windows) mit
 | A4-Lieferschein/-Rechnung (PDF), Sammelrechnung aus Lieferscheinen | ✅ |
 | QRK-Import | ✅ (gegen nachgebaute QRK-DB getestet, echte Sicherung ausständig) |
 | Automatische Datensicherung mit Rotation, Integritätsprüfung, Windows-Aufgabenplanung | ✅ |
-| Kassenoberfläche (modernes Glas-Design) | ⏳ nächster Schritt |
+| Kassenoberfläche im Glas-Design (Kassa, Belege, Rechnungen, Artikel, Abschluss, Einstellungen) | ✅ |
+| Ausgabe nach jedem Verkauf: Bon / A4 (Druckerwahl) / PDF | ✅ |
+| EPC-QR-Code (Überweisung per Banking-App) auf A4-Rechnungen | ✅ |
+| Kartenzahlung über Tap-to-Pay-App (manuelle Bestätigung) | ✅ – direkte Terminal-Anbindung folgt nach Anbieterwahl |
 
 ## Installation (Entwicklung)
 
@@ -33,6 +36,34 @@ python -m venv .venv
 pip install -e .[dev]
 pytest
 ```
+
+## Kasse starten
+
+```bash
+pip install -e .[alles]
+kasse-ui              # eigenes Programmfenster (Edge WebView2, unter Windows 10/11 vorinstalliert)
+kasse-ui --browser    # alternativ im Browser (nur lokal auf 127.0.0.1)
+```
+
+Beim ersten Start führt die Oberfläche durch Einrichtung (Kassen-ID, A-Trust) und Startbeleg.
+
+### Drucken
+
+- **Bondrucker**: mit dem Windows-Treiber installieren (z. B. „POS-80“), in *Einstellungen → Drucker*
+  auswählen und mit „Testdruck Bon“ prüfen. Die Kasse sendet ESC/POS-Rohdaten über den Treiber.
+- **A4**: jeder installierte Windows-Drucker. Für stilles Drucken auf einen bestimmten Drucker
+  wird das kostenlose [SumatraPDF](https://www.sumatrapdfreader.org/) empfohlen (wird automatisch gefunden,
+  Pfad notfalls über `KASSE_SUMATRA`).
+- **PDF**: wird unter `%APPDATA%\Registrierkasse\dokumente` abgelegt und geöffnet.
+
+Nach jedem Verkauf erscheint die Auswahl **Bon / A4 / PDF** samt Druckerwahl
+(abschaltbar unter *Einstellungen → Nach dem Kassieren*).
+
+### Kartenzahlung
+
+Die Kasse bucht Kartenzahlungen als eigene Zahlungsart (RKSV-Beleg wie Barumsatz).
+Der Betrag wird mit einer Tap-to-Pay-App am Smartphone kassiert und danach in der Kasse bestätigt.
+Eine direkte Anbindung (Betrag wird automatisch ans Handy gesendet) folgt, sobald der Anbieter feststeht.
 
 ## Ablauf: Umstieg von QRK
 
@@ -103,6 +134,9 @@ src/kasse/
   importer/qrk.py    QRK-Import (nur lesend)
   sicherung.py       automatische Datensicherung
   cli.py             Kommandozeile
+  ui/api.py          Schnittstelle Oberfläche ↔ Kassenkern
+  ui/app.py          Programmfenster (pywebview) bzw. lokaler Server
+  ui/web/            Oberfläche (HTML/CSS/JS, Glas-Design, hell/dunkel)
 ```
 
 Rechtlicher Hinweis: Die RKSV-Konformität ist vor dem Echtbetrieb mit der

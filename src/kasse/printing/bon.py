@@ -28,12 +28,16 @@ BELEG_TITEL = {
 }
 
 
-def drucker_aus_einstellungen(con: sqlite3.Connection):
+def drucker_aus_einstellungen(con: sqlite3.Connection, name: str | None = None):
+    """Bondrucker laut Einstellungen; ``name`` wählt einen anderen installierten Windows-Drucker."""
     from escpos import printer
 
-    art = einstellung(con, "bondrucker_art", "windows")
+    art = "windows" if name else einstellung(con, "bondrucker_art", "windows")
     if art == "windows":
-        return printer.Win32Raw(einstellung(con, "bondrucker_name"))
+        name = name or einstellung(con, "bondrucker_name")
+        if not name:
+            raise OSError("Kein Bondrucker eingestellt")
+        return printer.Win32Raw(name)
     if art == "usb":
         return printer.Usb(
             int(einstellung(con, "bondrucker_vendor", "0"), 16),
@@ -93,8 +97,8 @@ def bon_text(con: sqlite3.Connection, beleg_id: int) -> list[str]:
     return z
 
 
-def drucke_bon(con: sqlite3.Connection, beleg_id: int, drucker=None) -> None:
-    p = drucker or drucker_aus_einstellungen(con)
+def drucke_bon(con: sqlite3.Connection, beleg_id: int, drucker=None, drucker_name: str | None = None) -> None:
+    p = drucker or drucker_aus_einstellungen(con, drucker_name)
     jws = con.execute("SELECT jws FROM belege WHERE id = ?", (beleg_id,)).fetchone()["jws"]
     p.set(align="left")
     for zeile in bon_text(con, beleg_id):

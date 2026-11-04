@@ -94,6 +94,12 @@ CREATE TABLE IF NOT EXISTS dokumente (
     UNIQUE (typ, nummer)
 );
 
+-- welche Lieferscheine mit welcher Rechnung verrechnet wurden
+CREATE TABLE IF NOT EXISTS dokument_bezug (
+    rechnung_id     INTEGER NOT NULL REFERENCES dokumente(id),
+    lieferschein_id INTEGER NOT NULL UNIQUE REFERENCES dokumente(id)
+);
+
 CREATE TABLE IF NOT EXISTS dokumentpositionen (
     dokument_id      INTEGER NOT NULL REFERENCES dokumente(id),
     pos              INTEGER NOT NULL,
@@ -117,7 +123,8 @@ STANDARD_STEUERSAETZE = [
 
 
 def verbinden(pfad: Path | str) -> sqlite3.Connection:
-    con = sqlite3.connect(str(pfad))
+    # check_same_thread=False: die Oberfläche ruft aus mehreren Threads auf (Zugriff per Lock serialisiert)
+    con = sqlite3.connect(str(pfad), check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     con.executescript(SCHEMA)

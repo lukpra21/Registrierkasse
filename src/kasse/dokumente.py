@@ -92,10 +92,16 @@ def rechnung_aus_lieferscheinen(
               for i in lieferschein_ids}
     if len(kunden) != 1:
         raise KassenFehler("Sammelrechnung nur für Lieferscheine desselben Kunden")
+    marks = ",".join("?" * len(lieferschein_ids))
+    if con.execute(f"SELECT 1 FROM dokument_bezug WHERE lieferschein_id IN ({marks})", lieferschein_ids).fetchone():
+        raise KassenFehler("Mindestens ein Lieferschein wurde bereits verrechnet")
     alle: list[DokPosition] = []
     for i in lieferschein_ids:
         nr = con.execute("SELECT nummer, datum FROM dokumente WHERE id = ?", (i,)).fetchone()
         for p in positionen(con, i):
             p.bezeichnung = f"{p.bezeichnung} (LS {nr['nummer']} vom {nr['datum']})" if len(lieferschein_ids) > 1 else p.bezeichnung
             alle.append(p)
-    return rechnung(con, kunden.pop(), alle, zahlungsart, kasse, bezug_id=lieferschein_ids[0])
+    re_id = rechnung(con, kunden.pop(), alle, zahlungsart, kasse, bezug_id=lieferschein_ids[0])
+    con.executemany("INSERT INTO dokument_bezug VALUES (?, ?)", [(re_id, i) for i in lieferschein_ids])
+    con.commit()
+    return re_id

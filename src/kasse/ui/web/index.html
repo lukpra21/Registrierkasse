@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registrierkasse</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span></div>
+
+<header class="topbar glass">
+  <div class="brand">
+    <div class="logo">€</div>
+    <div>
+      <div class="brand-name" id="firma">Registrierkasse</div>
+      <div class="brand-sub" id="kasse-id">–</div>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-view="kassa" class="active"><i data-i="cart"></i>Kassa</button>
+    <button data-view="belege"><i data-i="receipt"></i>Belege</button>
+    <button data-view="dokumente"><i data-i="doc"></i>Rechnungen</button>
+    <button data-view="artikel"><i data-i="box"></i>Artikel</button>
+    <button data-view="abschluss"><i data-i="chart"></i>Abschluss</button>
+    <button data-view="einstellungen"><i data-i="gear"></i>Einstellungen</button>
+  </nav>
+  <div class="status" id="status"></div>
+  <div class="uhr" id="uhr"></div>
+</header>
+
+<main>
+  <!-- ============================== KASSA ============================== -->
+  <section class="view active" id="view-kassa">
+    <div class="kassa">
+      <div class="sortiment glass">
+        <div class="suchzeile">
+          <div class="suche"><i data-i="search"></i><input id="suche" placeholder="Artikel suchen oder Barcode scannen …" autocomplete="off"></div>
+          <button class="btn ghost" id="btn-frei"><i data-i="plus"></i>Freier Betrag</button>
+        </div>
+        <div class="gruppen" id="gruppen"></div>
+        <div class="kacheln" id="kacheln"></div>
+      </div>
+
+      <aside class="warenkorb glass">
+        <div class="wk-kopf">
+          <button class="kunde-chip" id="kunde-chip"><i data-i="user"></i><span id="kunde-name">Laufkunde</span></button>
+          <label class="switch" title="Trainingsmodus – kein Umsatz"><input type="checkbox" id="training"><span></span>Training</label>
+        </div>
+        <ul class="positionen" id="positionen"></ul>
+        <div class="leer" id="wk-leer">Noch keine Artikel.<br><small>Artikel antippen oder scannen</small></div>
+        <div class="wk-fuss">
+          <div class="steuerzeile" id="steuerzeile"></div>
+          <div class="summe"><span>Summe</span><strong id="summe">0,00 €</strong></div>
+          <div class="zahlen">
+            <button class="btn pay bar" id="btn-bar"><i data-i="cash"></i>Bar</button>
+            <button class="btn pay karte" id="btn-karte"><i data-i="card"></i>Karte</button>
+          </div>
+          <div class="b2b">
+            <button class="btn ghost" id="btn-ls" disabled><i data-i="truck"></i>Lieferschein</button>
+            <button class="btn ghost" id="btn-re" disabled><i data-i="doc"></i>Rechnung A4</button>
+            <button class="btn ghost icon" id="btn-leeren" title="Warenkorb leeren"><i data-i="trash"></i></button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================== BELEGE ============================== -->
+  <section class="view" id="view-belege">
+    <div class="glass panel">
+      <div class="panel-kopf">
+        <h2>Belege</h2>
+        <div class="werkzeuge"><input type="date" id="belege-datum"><button class="btn ghost" id="belege-alle">Alle</button></div>
+      </div>
+      <div class="tabelle-wrap"><table class="tabelle" id="belege-tabelle"></table></div>
+    </div>
+  </section>
+
+  <!-- ============================== DOKUMENTE ============================== -->
+  <section class="view" id="view-dokumente">
+    <div class="zwei">
+      <div class="glass panel">
+        <div class="panel-kopf"><h2>Kunden</h2><button class="btn" id="kunde-neu"><i data-i="plus"></i>Neu</button></div>
+        <div class="suche klein"><i data-i="search"></i><input id="kunden-suche" placeholder="Kunde suchen …"></div>
+        <ul class="liste" id="kunden-liste"></ul>
+      </div>
+      <div class="glass panel">
+        <div class="panel-kopf">
+          <h2>Lieferscheine &amp; Rechnungen</h2>
+          <div class="werkzeuge">
+            <div class="segment" id="dok-filter">
+              <button data-typ="" class="active">Alle</button><button data-typ="Lieferschein">Lieferscheine</button><button data-typ="Rechnung">Rechnungen</button>
+            </div>
+            <button class="btn" id="btn-sammelrechnung" disabled>Rechnung aus Auswahl</button>
+          </div>
+        </div>
+        <div class="tabelle-wrap"><table class="tabelle" id="dok-tabelle"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== ARTIKEL ============================== -->
+  <section class="view" id="view-artikel">
+    <div class="glass panel">
+      <div class="panel-kopf">
+        <h2>Artikel</h2>
+        <div class="werkzeuge">
+          <div class="suche klein"><i data-i="search"></i><input id="artikel-suche" placeholder="Filtern …"></div>
+          <button class="btn" id="artikel-neu"><i data-i="plus"></i>Neuer Artikel</button>
+        </div>
+      </div>
+      <div class="tabelle-wrap"><table class="tabelle" id="artikel-tabelle"></table></div>
+    </div>
+  </section>
+
+  <!-- ============================== ABSCHLUSS ============================== -->
+  <section class="view" id="view-abschluss">
+    <div class="zwei">
+      <div class="glass panel">
+        <div class="panel-kopf"><h2>Tagesbericht</h2><input type="date" id="bericht-datum"></div>
+        <div id="bericht"></div>
+      </div>
+      <div class="glass panel">
+        <h2>RKSV &amp; Sicherung</h2>
+        <div class="aktionen">
+          <button class="aktion" data-null="Monatsbeleg"><i data-i="cal"></i><b>Monatsbeleg</b><small>am Monatsende – sichert automatisch</small></button>
+          <button class="aktion" data-null="Jahresbeleg"><i data-i="cal"></i><b>Jahresbeleg</b><small>Dezember – mit BMF-Belegcheck prüfen</small></button>
+          <button class="aktion" data-null="Nullbeleg"><i data-i="receipt"></i><b>Nullbeleg</b><small>Kontrollbeleg ohne Umsatz</small></button>
+          <button class="aktion" id="btn-sicherung"><i data-i="save"></i><b>Jetzt sichern</b><small id="sicherung-info">–</small></button>
+          <button class="aktion" id="btn-dep"><i data-i="export"></i><b>DEP-Export</b><small>Datenerfassungsprotokoll für das Finanzamt</small></button>
+          <button class="aktion gefahr" data-null="Schlussbeleg"><i data-i="lock"></i><b>Schlussbeleg</b><small>Kasse endgültig außer Betrieb nehmen</small></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== EINSTELLUNGEN ============================== -->
+  <section class="view" id="view-einstellungen">
+    <form class="glass panel formular" id="einstellungen-form">
+      <div class="panel-kopf"><h2>Einstellungen</h2><button class="btn" type="submit"><i data-i="save"></i>Speichern</button></div>
+      <div class="raster">
+        <fieldset><legend>Unternehmen</legend>
+          <label>Firmenname<input name="firma_name"></label>
+          <label>Adresse<textarea name="firma_adresse" rows="3"></textarea></label>
+          <label>UID-Nummer<input name="firma_uid" placeholder="ATU…"></label>
+          <label>Firmenbuchnummer<input name="firma_fn"></label>
+          <label>IBAN<input name="firma_iban"></label>
+          <label>BIC<input name="firma_bic"></label>
+          <label>Fußzeile Bon<input name="bon_fusszeile"></label>
+        </fieldset>
+        <fieldset><legend>Drucker</legend>
+          <label>Bondrucker (Windows-Treiber)<select name="bondrucker_name" class="drucker-select"></select></label>
+          <label>A4-Drucker<select name="a4_drucker_name" class="drucker-select"></select></label>
+          <label>Nach dem Kassieren
+            <select name="nach_verkauf">
+              <option value="dialog">Auswahl anzeigen (Bon / A4 / PDF)</option>
+              <option value="bon">Bon sofort drucken</option>
+              <option value="nichts">Nichts drucken</option>
+            </select></label>
+          <input type="hidden" name="bondrucker_art" value="windows">
+          <button class="btn ghost" type="button" id="btn-testdruck"><i data-i="print"></i>Testdruck Bon</button>
+        </fieldset>
+        <fieldset><legend>Datensicherung</legend>
+          <label>Sicherungsordner<input name="sicherung_ziel" placeholder="z. B. E:\Kassensicherung (USB-Stick/NAS)"></label>
+          <label>Intervall (Stunden)<input name="sicherung_intervall_stunden" type="number" min="1"></label>
+          <label>Anzahl aufbewahren<input name="sicherung_behalten" type="number" min="1"></label>
+          <p class="hinweis">Tipp: Sicherungsziel auf einem anderen Datenträger wählen. Zusätzlich kann über
+            <code>kasse sicherung-planen</code> eine tägliche Windows-Aufgabe eingerichtet werden.</p>
+        </fieldset>
+      </div>
+    </form>
+  </section>
+</main>
+
+<!-- ============================== Dialoge ============================== -->
+<div class="modal-hg" id="modal-hg"><div class="modal glass" id="modal"></div></div>
+<div class="toasts" id="toasts"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
