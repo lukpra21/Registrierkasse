@@ -87,6 +87,10 @@ def sichern(con: sqlite3.Connection, ziel: Path | None = None, behalten: int | N
     with tempfile.TemporaryDirectory() as tmp:
         db_kopie = Path(tmp) / "kasse.db"
         dst = sqlite3.connect(db_kopie)
+        # Ein offener Schreibvorgang auf derselben Verbindung würde die Backup-API endlos warten lassen.
+        # Sicherungen laufen unter dem API-Lock, offene Änderungen sind daher abgeschlossene Vorgänge.
+        if con.in_transaction:
+            con.commit()
         with dst:
             con.backup(dst)
         ok = dst.execute("PRAGMA integrity_check").fetchone()[0]

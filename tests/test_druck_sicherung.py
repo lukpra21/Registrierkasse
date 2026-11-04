@@ -54,3 +54,15 @@ def test_sicherung_mit_rotation(kasse, tmp_path):
     ziel_db = tmp_path / "wieder.db"
     sicherung.wiederherstellen(sorted(ziel.glob("*.zip"))[-1], ziel_db)
     assert ziel_db.read_bytes().startswith(b"SQLite format 3")
+
+
+def test_sicherung_mit_offenem_schreibvorgang(kasse, tmp_path):
+    """Regression: offene Transaktion auf derselben Verbindung darf die Sicherung nicht blockieren."""
+    from kasse import db
+
+    kasse.startbeleg()
+    db.setze_einstellung(kasse.con, "firma_name", "Noch nicht gespeichert")
+    assert kasse.con.in_transaction
+    ziel = tmp_path / "s"
+    ziel.mkdir()
+    assert sicherung.sichern(kasse.con, ziel, passwort="").exists()

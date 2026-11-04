@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "registrierkasse"
-version = "0.3.0"
+version = "0.4.0"
 description = "RKSV-konforme Registrierkasse für KMU (Österreich) mit A-Trust-Onlinesignatur, Bondrucker und A4-Rechnungen"
 requires-python = ">=3.11"
 readme = "README.md"
@@ -15,10 +15,10 @@ dependencies = [
 
 [project.optional-dependencies]
 bon = ["python-escpos>=3.1"]
-a4 = ["reportlab>=4"]
+a4 = ["reportlab>=4", "pypdf>=4"]
 gui = ["pywebview>=5", "pywin32>=306; sys_platform == 'win32'"]
-alles = ["python-escpos>=3.1", "reportlab>=4", "pywebview>=5", "pywin32>=306; sys_platform == 'win32'"]
-dev = ["pytest>=8", "python-escpos>=3.1", "reportlab>=4", "lxml>=5"]
+alles = ["python-escpos>=3.1", "reportlab>=4", "pypdf>=4", "pywebview>=5", "pywin32>=306; sys_platform == 'win32'"]
+dev = ["pytest>=8", "python-escpos>=3.1", "reportlab>=4", "pypdf>=4", "lxml>=5"]
 
 [project.scripts]
 kasse = "kasse.cli:main"

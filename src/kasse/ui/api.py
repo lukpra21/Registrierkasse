@@ -24,6 +24,7 @@ from pathlib import Path
 from .. import (__version__, benutzer, db, dokumente, ebinterface, export, geheim, gutscheine, kassenbuch,
                 mail, sicherung, terminal, update)
 from ..config import datenverzeichnis
+from ..printing.layout import ALLE_STANDARDS
 from ..geld import anzeige, euro_zu_cent, netto_aus_brutto
 from ..rksv import Kasse, KassenFehler, Position, SignaturFehler
 from ..rksv.dep import dep_export_datei
@@ -43,6 +44,7 @@ EINSTELLUNGEN = (
     "smtp_host", "smtp_port", "smtp_sicherheit", "smtp_benutzer", "smtp_absender", "mail_text",
     *export.STANDARD_KONTEN.keys(),
     "akzentfarbe",
+    *ALLE_STANDARDS,
 )
 
 FEHLERTYPEN = (KassenFehler, SignaturFehler, ValueError, OSError, sqlite3.Error, terminal.TerminalFehler,
@@ -875,16 +877,34 @@ class KassenApi:
     @_api()
     def einstellungen(self):
         standard = {**export.STANDARD_KONTEN, "sicherung_intervall_stunden": "24", "sicherung_behalten": "30",
-                    "smtp_port": "587", "auto_abmelden_min": "0", "nach_verkauf": "dialog"}
-        return {k: self._e(k, "") or standard.get(k, "") for k in EINSTELLUNGEN}
+                    "smtp_port": "587", "auto_abmelden_min": "0", "nach_verkauf": "dialog", **ALLE_STANDARDS}
+        werte = {}
+        for k in EINSTELLUNGEN:
+            gespeichert = self._e(k, None)
+            # Texte dürfen bewusst leer sein; sonst Standardwert anzeigen
+            werte[k] = gespeichert if (gespeichert is not None and (gespeichert != "" or k.startswith("a4_text_")
+                                                                    or k in ("a4_fusszeile", "bon_kopftext"))) \
+                else standard.get(k, "")
+        werte["_briefpapier"] = {k: bool(self._e(k)) for k in ("a4_briefpapier_erste", "a4_briefpapier_folge")}
+        return werte
 
     @_api(recht="chef")
     def einstellungen_speichern(self, werte: dict):
+        from ..printing.layout import A4_GRENZEN, BON_GRENZEN
+
         geaendert = []
         for k, v in werte.items():
             if k in EINSTELLUNGEN and str(v) != (self._e(k, "") or ""):
-                if k == "akzentfarbe" and v and not re.fullmatch(r"#[0-9a-fA-F]{6}", str(v)):
+                if k in ("akzentfarbe", "a4_tabellenfarbe") and v and not re.fullmatch(r"#[0-9a-fA-F]{6}", str(v)):
                     raise ValueError("Farbe im Format #RRGGBB angeben")
+                grenzen = {**A4_GRENZEN, **BON_GRENZEN}.get(k)
+                if grenzen and str(v).strip():
+                    try:
+                        zahl = float(str(v).replace(",", "."))
+                    except ValueError:
+                        raise ValueError(f"{k}: bitte eine Zahl eingeben") from None
+                    if not grenzen[0] <= zahl <= grenzen[1]:
+                        raise ValueError(f"{k}: erlaubt sind {grenzen[0]:g} bis {grenzen[1]:g}")
                 db.setze_einstellung(self.con, k, str(v))
                 geaendert.append(k)
         self.con.commit()
@@ -911,6 +931,80 @@ class KassenApi:
     @_api()
     def branding(self):
         return {"logo": self._e("firma_logo", ""), "farbe": self._e("akzentfarbe", "")}
+
+    @_api(recht="chef")
+    def briefpapier_setzen(self, seite: str, data_url: str | None):
+        """Briefpapier als PDF/PNG/JPG für die erste Seite bzw. die Folgeseiten (None = entfernen)."""
+        from ..printing.layout import BRIEFPAPIER_MAX_BYTES, data_url_lesen
+
+        schluessel = {"erste": "a4_briefpapier_erste", "folge": "a4_briefpapier_folge"}.get(seite)
+        if not schluessel:
+            raise ValueError("Seite muss 'erste' oder 'folge' sein")
+        if data_url:
+            daten, typ = data_url_lesen(data_url)
+            if not daten:
+                raise ValueError("Briefpapier bitte als PDF, PNG oder JPG")
+            if len(daten) > BRIEFPAPIER_MAX_BYTES:
+                raise ValueError("Briefpapier zu groß (max. 5 MB)")
+            if typ == "pdf":
+                from pypdf import PdfReader
+                import io as _io
+
+                try:
+                    PdfReader(_io.BytesIO(daten)).pages[0]
+                except Exception as e:
+                    raise ValueError(f"PDF kann nicht gelesen werden: {e}") from e
+        db.setze_einstellung(self.con, schluessel, data_url or "")
+        self.con.commit()
+        self._ereignis("Briefpapier geändert", seite)
+        return True
+
+    @_api()
+    def vorschau_a4(self, typ: str = "Rechnung", werte: dict | None = None):
+        """Muster-PDF mit den (ggf. noch ungespeicherten) Layout-Werten – als Base64 für die Vorschau."""
+        from ..printing import a4
+
+        with self._vorschau_werte(werte):
+            pfad = self._ordner("dokumente") / f"Vorschau-{typ}.pdf"
+            daten = a4.muster_pdf(self.con, typ, pfad)
+        return {"pdf": base64.b64encode(daten.read_bytes()).decode(), "pfad": str(daten)}
+
+    @_api()
+    def vorschau_bon(self, werte: dict | None = None):
+        from ..printing.bon import bon_kopf, bon_text
+        from ..printing.layout import bon_layout
+
+        with self._vorschau_werte(werte):
+            L = bon_layout(self.con)
+            row = self.con.execute(
+                "SELECT b.id FROM belege b WHERE EXISTS (SELECT 1 FROM belegpositionen p WHERE p.beleg_id = b.id)"
+                " ORDER BY b.belegnummer DESC LIMIT 1").fetchone() or \
+                self.con.execute("SELECT id FROM belege ORDER BY belegnummer DESC LIMIT 1").fetchone()
+            kopf = "".join(bon_kopf(self.con, L.zeichen))
+            text = "".join(bon_text(self.con, row[0], L.zeichen, mit_kopf=False)) if row else \
+                "(noch kein Beleg vorhanden – Vorschau nach dem Startbeleg)\n"
+        return {"kopf": kopf, "text": text, "zeichen": L.zeichen, "zentriert": L.kopf_zentriert,
+                "schrift": L.schrift, "qr": L.qr_groesse, "papier": L.papierbreite}
+
+    def _vorschau_werte(self, werte: dict | None):
+        """Kontext: Werte vorübergehend setzen (ohne zu speichern) – für Live-Vorschau."""
+        import contextlib
+
+        @contextlib.contextmanager
+        def ctx():
+            if not werte:
+                yield
+                return
+            self.con.commit()
+            try:
+                for k, v in werte.items():
+                    if k in EINSTELLUNGEN:
+                        db.setze_einstellung(self.con, k, str(v))
+                yield
+            finally:
+                self.con.rollback()
+
+        return ctx()
 
     @_api(recht="chef")
     def logo_setzen(self, data_url: str | None):

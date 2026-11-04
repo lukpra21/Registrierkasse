@@ -17,6 +17,7 @@ daten += collect_data_files("barcode")
 versteckt = (collect_submodules("keyring.backends") + collect_submodules("kasse")
              + collect_submodules("reportlab.graphics") + collect_submodules("reportlab.pdfbase")
              + collect_submodules("escpos") + collect_submodules("qrcode") + collect_submodules("barcode")
+             + collect_submodules("pypdf")
              + ["win32timezone", "win32print", "win32api", "win32cred", "PIL.Image"])
 
 def analyse(skript):

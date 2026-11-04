@@ -1100,6 +1100,10 @@ async function ladeEinstellungen() {
     if (el && !el.classList?.contains("drucker-select")) el.value = v || (el.tagName === "SELECT" ? el.options[0]?.value : "");
   });
   $("#bon-logo").checked = S.einstellungen.bon_logo === "1";
+  $$("[data-schalter]").forEach((cb) => (cb.checked = S.einstellungen[cb.dataset.schalter] !== "0"));
+  const profil = S.einstellungen.bon_profil || "default";
+  $("#bon-profil").innerHTML = [...new Set([...BON_PROFILE, profil])].map((p) => `<option ${p === profil ? "selected" : ""} value="${esc(p)}">${p === "default" ? "Standard (ESC/POS)" : esc(p)}</option>`).join("");
+  zeigeBriefpapier(S.einstellungen._briefpapier || {});
   $("#farbe-wahl").value = S.einstellungen.akzentfarbe || "#3b5bfd";
   $(".nur-viva").style.display = f.elements.karten_terminal.value === "viva" ? "" : "none";
   await ladeEinstellungsListen();
@@ -1122,11 +1126,16 @@ function zeigeUpdate(u) {
   $("#update-info").innerHTML = u ? `Version <b>${esc(u.version)}</b> verfügbar${u.hinweis ? ` – ${esc(u.hinweis)}` : ""}` : "Kein Update bekannt.";
   $("#update-installieren").hidden = !u;
 }
+function formularWerte() {
+  const f = $("#einstellungen-form");
+  f.elements.bon_logo.value = $("#bon-logo").checked ? "1" : "0";
+  $$("[data-schalter]").forEach((cb) => (f.elements[cb.dataset.schalter].value = cb.checked ? "1" : "0"));
+  return Object.fromEntries(new FormData(f).entries());
+}
 $("#einstellungen-form").onsubmit = (e) => {
   e.preventDefault();
   sicher(async () => {
-    e.target.elements.bon_logo.value = $("#bon-logo").checked ? "1" : "0";
-    const werte = Object.fromEntries(new FormData(e.target).entries());
+    const werte = formularWerte();
     await api("einstellungen_speichern", werte);
     S.einstellungen = { ...S.einstellungen, ...werte };
     toast("Einstellungen gespeichert"); ladeStatus(); ladeBranding();
@@ -1160,6 +1169,65 @@ $("#btn-mailtest").onclick = async () => {
   const an = await eingabe("Testnachricht", { feld: "Empfänger", typ: "email", knopf: "Senden" });
   if (an) sicher(async () => { await api("mail_testen", an); toast("Testnachricht gesendet"); });
 };
+/* ---------------------------------------------------------------- Briefpapier & Bondrucker-Papier */
+
+const BON_PROFILE = ["default", "simple", "TM-T88II", "TM-T88III", "TM-T88IV", "TM-T88V", "TM-T20", "TM-T20II",
+  "TM-U220", "TM-P80", "POS-5890", "POS-58", "NT-80-V-UL", "RP-F10-80mm", "TSP600", "TUP500"];
+
+function zeigeBriefpapier(bp) {
+  $$(".briefpapier-zeile").forEach((z) => {
+    const da = !!bp[`a4_briefpapier_${z.dataset.seite}`];
+    const st = $(".bp-status", z);
+    st.textContent = da ? "hinterlegt ✓" : z.dataset.seite === "folge" ? "wie Seite 1" : "keines (weißes Papier)";
+    st.classList.toggle("da", da);
+    $("[data-weg]", z).disabled = !da;
+  });
+}
+$$(".briefpapier-zeile").forEach((z) => {
+  $("input[type=file]", z).onchange = (e) => {
+    const datei = e.target.files[0]; if (!datei) return;
+    if (datei.size > 5e6) { toast("Datei zu groß (max. 5 MB)", "fehler"); e.target.value = ""; return; }
+    const r = new FileReader();
+    r.onload = () => sicher(async () => {
+      await api("briefpapier_setzen", z.dataset.seite, r.result);
+      toast("Briefpapier gespeichert");
+      const es = await api("einstellungen"); S.einstellungen._briefpapier = es._briefpapier; zeigeBriefpapier(es._briefpapier);
+    });
+    r.readAsDataURL(datei); e.target.value = "";
+  };
+  $("[data-weg]", z).onclick = () => sicher(async () => {
+    await api("briefpapier_setzen", z.dataset.seite, null);
+    const es = await api("einstellungen"); zeigeBriefpapier(es._briefpapier);
+  });
+});
+$("#bon-papier").onchange = (e) => {
+  const f = $("#einstellungen-form");
+  const v = e.target.value === "58" ? { bon_zeichen: 32, bon_breite_px: 384 } : { bon_zeichen: 42, bon_breite_px: 512 };
+  Object.entries(v).forEach(([k, w]) => (f.elements[k].value = w));
+  toast(`Für ${e.target.value} mm: ${v.bon_zeichen} Zeichen, ${v.bon_breite_px} Punkte`);
+};
+$$("[data-vorschau-a4]").forEach((b) => (b.onclick = () => sicher(async () => {
+  b.disabled = true;
+  try {
+    const r = await api("vorschau_a4", b.dataset.vorschauA4, formularWerte());
+    const url = `data:application/pdf;base64,${r.pdf}`;
+    dialog(`<h3>Vorschau ${esc(b.dataset.vorschauA4)}</h3><p class="unter">Musterdaten mit den aktuellen Einstellungen – noch nicht gespeicherte Änderungen sind enthalten.</p>
+      <iframe class="pdf-vorschau" src="${url}" title="PDF-Vorschau"></iframe>
+      <div class="modal-knöpfe"><a class="btn ghost" href="${url}" download="Vorschau-${esc(b.dataset.vorschauA4)}.pdf">PDF speichern</a><button class="btn" onclick="schliessen()">Schließen</button></div>`, { breit: true });
+  } finally { b.disabled = false; }
+})));
+$("#btn-bon-vorschau").onclick = () => sicher(async () => {
+  const werte = formularWerte();
+  const r = await api("vorschau_bon", werte);
+  const qrPx = Math.max(40, r.qr * 25);
+  const schnitt = werte.bon_schnitt === "kein" ? "kein Schnitt" : werte.bon_schnitt === "voll" ? "✂ Vollschnitt" : "✂ Teilschnitt";
+  dialog(`<h3>Vorschau Bon (${r.papier} mm, ${r.zeichen} Zeichen)</h3><p class="unter">So wird der letzte Beleg mit den aktuellen Einstellungen gedruckt.</p>
+    <div class="bon-vorschau"><div class="bon-papier ${r.schrift === "b" ? "schrift-b" : ""}" style="width:calc(${r.zeichen}ch + 20px)">
+      <div class="${r.zentriert ? "zentriert" : ""}">${esc(r.kopf)}</div>${esc(r.text)}<div class="qr" style="width:${qrPx}px;height:${qrPx}px" title="RKSV-QR-Code"></div>${"\n".repeat(Number(werte.bon_vorschub || 0))}<div class="schnitt">${schnitt}</div>
+    </div></div>
+    <div class="modal-knöpfe"><button class="btn" onclick="schliessen()">Schließen</button></div>`, { breit: true });
+});
+
 $("#btn-selbsttest").onclick = () => sicher(async () => {
   toast("Selbsttest läuft …");
   const r = await api("selbsttest");

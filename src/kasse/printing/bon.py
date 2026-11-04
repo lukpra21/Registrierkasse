@@ -1,4 +1,5 @@
-"""Bondruck (80 mm, ESC/POS) über USB.
+"""Bondruck (ESC/POS) über USB – Papierbreite, Zeichen pro Zeile, Schrift, Druckerprofil,
+QR-Größe, Vorschub und Abschnitt sind einstellbar (siehe ``layout.bon_layout``).
 
 Windows: Am einfachsten über den installierten Windows-Druckertreiber
 (``Win32Raw`` mit dem Druckernamen). Alternativ direkt per USB
@@ -18,7 +19,7 @@ def _ist_gutschein(bezeichnung: str) -> bool:
     return bezeichnung.startswith("Wertgutschein ") or (
         bezeichnung.startswith("Gutschein ") and bezeichnung.endswith(" eingelöst"))
 
-BREITE = 42  # Zeichen bei Font A auf 80-mm-Papier
+BREITE = 42  # Standard: Zeichen bei Font A auf 80-mm-Papier (einstellbar: bon_zeichen)
 
 BELEG_TITEL = {
     "Barumsatz": "RECHNUNG",
@@ -37,39 +38,81 @@ def drucker_aus_einstellungen(con: sqlite3.Connection, name: str | None = None):
     """Bondrucker laut Einstellungen; ``name`` wählt einen anderen installierten Windows-Drucker."""
     from escpos import printer
 
+    from .layout import bon_layout
+
+    L = bon_layout(con)
+    profil = None if L.profil in ("", "default") else L.profil
     art = "windows" if name else einstellung(con, "bondrucker_art", "windows")
     if art == "windows":
         name = name or einstellung(con, "bondrucker_name")
         if not name:
             raise OSError("Kein Bondrucker eingestellt")
-        return printer.Win32Raw(name)
-    if art == "usb":
-        return printer.Usb(
+        p = printer.Win32Raw(name, profile=profil)
+    elif art == "usb":
+        p = printer.Usb(
             int(einstellung(con, "bondrucker_vendor", "0"), 16),
             int(einstellung(con, "bondrucker_product", "0"), 16),
+            profile=profil,
         )
-    if art == "datei":
-        return printer.File(einstellung(con, "bondrucker_datei", "bon.bin"))
-    raise ValueError(f"Unbekannte Bondrucker-Art: {art}")
+    elif art == "datei":
+        p = printer.File(einstellung(con, "bondrucker_datei", "bon.bin"), profile=profil)
+    else:
+        raise ValueError(f"Unbekannte Bondrucker-Art: {art}")
+    _breite_setzen(p, L.breite_px)
+    return p
 
 
-def _zeile(links: str, rechts: str) -> str:
-    platz = BREITE - len(rechts) - 1
+def _breite_setzen(p, pixel: int) -> None:
+    """Bedruckbare Breite im Druckerprofil setzen (für Zentrierung von Logo und QR-Code)."""
+    try:
+        p.profile.profile_data.setdefault("media", {}).setdefault("width", {})["pixels"] = pixel
+    except Exception:
+        pass
+
+
+def _zeile(links: str, rechts: str, breite: int = BREITE) -> str:
+    platz = breite - len(rechts) - 1
     return f"{links[:platz]:<{platz}} {rechts}\n"
 
 
-def bon_text(con: sqlite3.Connection, beleg_id: int) -> list[str]:
+def _umbrechen(text: str, breite: int) -> list[str]:
+    import textwrap
+
+    zeilen = []
+    for absatz in text.splitlines() or [""]:
+        zeilen += textwrap.wrap(absatz, breite) or [""]
+    return zeilen
+
+
+def bon_kopf(con: sqlite3.Connection, breite: int) -> list[str]:
+    """Kopfbereich (Firma, Adresse, UID, Kopftext) – wird zentriert gedruckt, wenn eingestellt."""
+    e = lambda k: einstellung(con, k, "") or ""  # noqa: E731
+    z = []
+    for k in ("firma_name", "firma_adresse"):
+        z += [zeile for zeile in e(k).splitlines() if zeile]
+    if e("firma_uid"):
+        z.append(f"UID: {e('firma_uid')}")
+    if e("bon_kopftext"):
+        z += _umbrechen(e("bon_kopftext"), breite)
+    return [zeile[:breite] + "\n" for zeile in z]
+
+
+def bon_text(con: sqlite3.Connection, beleg_id: int, breite: int | None = None, mit_kopf: bool = True) -> list[str]:
     """Textzeilen des Bons (ohne QR-Code) – auch für Vorschau/Tests nutzbar."""
+    from .layout import bon_layout
+
+    BREITE = breite or bon_layout(con).zeichen  # noqa: N806 – lokale Zeilenbreite
+    _z = _zeile
+
+    def _zeile_(links, rechts):  # noqa: E306
+        return _z(links, rechts, BREITE)
+
     b = con.execute("SELECT * FROM belege WHERE id = ?", (beleg_id,)).fetchone()
     e = lambda k: einstellung(con, k, "") or ""  # noqa: E731
-    z: list[str] = []
-    for k in ("firma_name", "firma_adresse"):
-        z += [l + "\n" for l in e(k).splitlines() if l]
-    if e("firma_uid"):
-        z.append(f"UID: {e('firma_uid')}\n")
+    z: list[str] = bon_kopf(con, BREITE) if mit_kopf else []
     z.append("-" * BREITE + "\n")
     z.append(f"{BELEG_TITEL.get(b['art'], b['art'])}\n")
-    z.append(_zeile(f"Beleg-Nr. {b['belegnummer']}", b["zeitpunkt"].replace("T", " ")))
+    z.append(_zeile_(f"Beleg-Nr. {b['belegnummer']}", b["zeitpunkt"].replace("T", " ")))
     z.append(f"Kasse: {e('kassen_id')}\n")
     if b["benutzer_id"]:
         name = con.execute("SELECT name FROM benutzer WHERE id = ?", (b["benutzer_id"],)).fetchone()
@@ -81,11 +124,11 @@ def bon_text(con: sqlite3.Connection, beleg_id: int) -> list[str]:
     summen: list[int] = []
     gutschein = False
     for p in con.execute("SELECT * FROM belegpositionen WHERE beleg_id = ? ORDER BY pos", (beleg_id,)):
-        z.append(_zeile(p["bezeichnung"], anzeige(p["summe_cent"] + p["rabatt_cent"])))
+        z.append(_zeile_(p["bezeichnung"], anzeige(p["summe_cent"] + p["rabatt_cent"])))
         if p["menge"] not in ("1", "-1"):
             z.append(f"  {p['menge']} x {anzeige(p['einzelpreis_cent'])}\n")
         if p["rabatt_cent"]:
-            z.append(_zeile("  Rabatt", anzeige(-p["rabatt_cent"])))
+            z.append(_zeile_("  Rabatt", anzeige(-p["rabatt_cent"])))
         summen.append(p["summe_cent"])
         if _ist_gutschein(p["bezeichnung"]):
             gutschein = True
@@ -94,20 +137,23 @@ def bon_text(con: sqlite3.Connection, beleg_id: int) -> list[str]:
 
     summe = sum(summen)
     z.append("=" * BREITE + "\n")
-    z.append(_zeile("SUMME EUR", anzeige(summe)))
+    z.append(_zeile_("SUMME EUR", anzeige(summe)))
     zahlungen = con.execute("SELECT art, betrag_cent FROM zahlungen WHERE beleg_id = ?", (beleg_id,)).fetchall()
     for zl in zahlungen:
-        z.append(_zeile(f"Bezahlt: {zl['art']}", anzeige(zl["betrag_cent"])))
+        z.append(_zeile_(f"Bezahlt: {zl['art']}", anzeige(zl["betrag_cent"])))
     if not zahlungen and b["zahlungsart"] and summe:
-        z.append(_zeile(f"Bezahlt: {b['zahlungsart']}", anzeige(summe)))
+        z.append(_zeile_(f"Bezahlt: {b['zahlungsart']}", anzeige(summe)))
     if steuern:
         z.append("\n")
-        z.append(_zeile("USt-Satz      Netto      USt", "Brutto"))
         from ..geld import netto_aus_brutto
 
+        # Spaltenbreiten an die Zeilenbreite anpassen (58 mm: 32 Zeichen, 80 mm: 42/48)
+        sp = max(7, (BREITE - 6) // 3)
+        rest = BREITE - 6 - 3 * sp
+        z.append(f"{'Satz':<6}{'Netto':>{sp}}{'USt':>{sp}}{'Brutto':>{sp + rest}}\n")
         for satz, brutto in sorted(steuern.items(), key=lambda kv: -float(kv[0])):
             netto = netto_aus_brutto(brutto, satz)
-            z.append(_zeile(f"{satz:>3} %  {anzeige(netto):>10} {anzeige(brutto - netto):>8}", anzeige(brutto)))
+            z.append(f"{satz + ' %':<6}{anzeige(netto):>{sp}}{anzeige(brutto - netto):>{sp}}{anzeige(brutto):>{sp + rest}}\n")
     if gutschein:
         z.append("Wertgutschein: keine USt (Mehrzweckgutschein)\n")
     if b["ausfall"]:
@@ -115,12 +161,17 @@ def bon_text(con: sqlite3.Connection, beleg_id: int) -> list[str]:
     if b["art"] == "Training":
         z.append("\n*** TRAININGSBUCHUNG – KEIN UMSATZ ***\n")
     if e("bon_fusszeile"):
-        z.append("\n" + e("bon_fusszeile") + "\n")
+        z.append("\n" + "\n".join(_umbrechen(e("bon_fusszeile"), BREITE)) + "\n")
     return z
 
 
 def drucke_bon(con: sqlite3.Connection, beleg_id: int, drucker=None, drucker_name: str | None = None) -> None:
+    from .layout import bon_layout
+
+    L = bon_layout(con)
     p = drucker or drucker_aus_einstellungen(con, drucker_name)
+    if drucker is not None:
+        _breite_setzen(p, L.breite_px)
     jws = con.execute("SELECT jws FROM belege WHERE id = ?", (beleg_id,)).fetchone()["jws"]
     logo = einstellung(con, "firma_logo")
     if logo and einstellung(con, "bon_logo") == "1":
@@ -131,17 +182,24 @@ def drucke_bon(con: sqlite3.Connection, beleg_id: int, drucker=None, drucker_nam
             from PIL import Image
 
             bild = Image.open(io.BytesIO(base64.b64decode(logo.split(",", 1)[1]))).convert("L")
-            bild.thumbnail((384, 160))
+            bild.thumbnail((min(384, L.breite_px), 160))
             p.set(align="center")
             p.image(bild, center=True)
         except Exception:
             pass  # Logo ist optional
-    p.set(align="left")
-    for zeile in bon_text(con, beleg_id):
+    p.set(align="center" if L.kopf_zentriert else "left", font=L.schrift)
+    for zeile in bon_kopf(con, L.zeichen):
+        p.text(zeile)
+    p.set(align="left", font=L.schrift)
+    for zeile in bon_text(con, beleg_id, L.zeichen, mit_kopf=False):
         p.text(zeile)
     p.set(align="center")
-    p.qr(maschinenlesbarer_code(jws), size=4, native=False)
-    p.cut()
+    p.qr(maschinenlesbarer_code(jws), size=L.qr_groesse, native=False, center=True)
+    p.set(align="left")
+    if L.vorschub:
+        p.text("\n" * L.vorschub)
+    if L.schnitt != "kein":
+        p.cut(mode="PART" if L.schnitt == "teil" else "FULL", feed=False)
 
 
 def kassenlade_oeffnen(con: sqlite3.Connection, drucker=None) -> None:

@@ -64,6 +64,16 @@ kasse-ui --browser    # im Browser (nur 127.0.0.1)
 
 ## Drucken
 
+**Briefpapier (A4)** – *Einstellungen → Briefpapier*: eigenes Briefpapier als PDF/PNG/JPG (Seite 1 und
+Folgeseiten getrennt), Seitenränder, Position der Anschrift für Fensterkuverts (DIN 5008), Logo-Position und
+-Größe, Schriftart/-größe, Farbe des Tabellenkopfs, Absender- und Fußzeile, Einleitungs- und Schlusstexte
+für Rechnung und Lieferschein. Die Vorschau zeigt eine Musterrechnung mit den aktuellen (auch noch nicht
+gespeicherten) Eingaben.
+
+**Bondrucker-Papier** – *Einstellungen → Bondrucker-Papier*: 80 oder 58 mm, Zeichen pro Zeile,
+Druckbreite, Schrift A/B, Druckerprofil (für korrekte Umlaute und €), Kopftext, QR-Code-Größe, Vorschub
+und Abschnitt (Teil-/Vollschnitt/kein). Die Vorschau zeigt den letzten Beleg in der eingestellten Breite.
+
 - **Bondrucker** mit Windows-Treiber (z. B. „POS-80“) auswählen; die Kasse sendet ESC/POS über den Treiber.
   Kassenlade am Bondrucker: *Einstellungen → Drucker & Kassenlade*.
 - **A4** auf jedem installierten Drucker; der Installer legt SumatraPDF für stilles Drucken bei.

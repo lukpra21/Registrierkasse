@@ -86,6 +86,23 @@ def ausfuehren(ausgabe=print) -> bool:
             beleg["rechnung"] = re_
             return "Lieferschein + Rechnung mit Zahlungs-QR"
 
+        def briefpapier():
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas
+
+            from .printing.a4 import muster_pdf
+
+            puffer = io.BytesIO()
+            c = canvas.Canvas(puffer, pagesize=A4)
+            c.drawString(40, 800, "Briefpapier-Test")
+            c.save()
+            db.setze_einstellung(con, "a4_briefpapier_erste",
+                                 "data:application/pdf;base64," + base64.b64encode(puffer.getvalue()).decode())
+            p = muster_pdf(con, "Rechnung", tmp / "muster.pdf")
+            db.setze_einstellung(con, "a4_briefpapier_erste", "")
+            con.commit()
+            return f"PDF-Briefpapier hinterlegt ({p.stat().st_size} Byte)"
+
         def erechnung():
             p = ebinterface.erzeugen(con, beleg["rechnung"], tmp / "re.xml")
             return f"{p.stat().st_size} Byte"
@@ -118,7 +135,8 @@ def ausfuehren(ausgabe=print) -> bool:
             return "verfügbar" if geheim._keyring() is not None else "NICHT verfügbar (Passwörter nur über Umgebungsvariablen)"
 
         for name, f in [("Belege signieren", belege), ("Bon (ESC/POS)", bon), ("A4-Beleg als PDF", pdf_beleg),
-                        ("Lieferschein/Rechnung als PDF", pdf_rechnung), ("E-Rechnung ebInterface", erechnung),
+                        ("Lieferschein/Rechnung als PDF", pdf_rechnung), ("Briefpapier", briefpapier),
+                        ("E-Rechnung ebInterface", erechnung),
                         ("Export Steuerberater", steuerberater), ("Sicherung", sicherung_),
                         ("Belegkette", belegkette), ("Passwortspeicher", passwortspeicher)]:
             schritt(name, f)

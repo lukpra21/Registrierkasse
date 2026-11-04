@@ -217,6 +217,77 @@
           <input type="hidden" name="bondrucker_art" value="windows">
           <button class="btn ghost" type="button" id="btn-testdruck"><i data-i="print"></i>Testdruck Bon</button>
         </fieldset>
+        <fieldset class="breit"><legend>Briefpapier (A4 – Rechnung, Lieferschein)</legend>
+          <div class="briefpapier-raster">
+            <div class="spalte">
+              <div class="unterueberschrift">Eigenes Briefpapier (optional)</div>
+              <p class="hinweis">PDF, PNG oder JPG in A4. Wird hinter jede Seite gelegt – ideal für vorgedrucktes Firmenpapier.</p>
+              <div class="briefpapier-zeile" data-seite="erste"><span>Seite 1</span><b class="bp-status">–</b>
+                <label class="btn ghost datei">Wählen<input type="file" accept="application/pdf,image/png,image/jpeg" hidden></label>
+                <button class="btn ghost" type="button" data-weg>Entfernen</button></div>
+              <div class="briefpapier-zeile" data-seite="folge"><span>Folgeseiten</span><b class="bp-status">–</b>
+                <label class="btn ghost datei">Wählen<input type="file" accept="application/pdf,image/png,image/jpeg" hidden></label>
+                <button class="btn ghost" type="button" data-weg>Entfernen</button></div>
+              <div class="unterueberschrift">Kopf &amp; Fuß</div>
+              <div class="zweispaltig">
+                <label>Logo<select name="a4_logo_position"><option value="rechts">rechts</option><option value="links">links</option><option value="mitte">mittig</option><option value="aus">ausblenden</option></select></label>
+                <label>Logo-Breite (mm)<input name="a4_logo_breite" type="number" min="10" max="120"></label>
+              </div>
+              <label class="switch"><input type="checkbox" data-schalter="a4_absender_zeile"><span></span>Absenderzeile über der Anschrift</label>
+              <label class="switch"><input type="checkbox" data-schalter="a4_fusszeile_anzeigen"><span></span>Fußzeile drucken</label>
+              <label>Eigene Fußzeile (leer = automatisch aus Firmendaten)<textarea name="a4_fusszeile" rows="2"></textarea></label>
+              <input type="hidden" name="a4_absender_zeile"><input type="hidden" name="a4_fusszeile_anzeigen">
+            </div>
+            <div class="spalte">
+              <div class="unterueberschrift">Seitenränder &amp; Positionen (mm)</div>
+              <div class="dreispaltig">
+                <label>Rand oben<input name="a4_rand_oben" type="number" min="0" max="80"></label>
+                <label>Rand unten<input name="a4_rand_unten" type="number" min="0" max="80"></label>
+                <label>Logo von oben<input name="a4_logo_oben" type="number" min="0" max="80"></label>
+                <label>Rand links<input name="a4_rand_links" type="number" min="0" max="60"></label>
+                <label>Rand rechts<input name="a4_rand_rechts" type="number" min="0" max="60"></label>
+                <label>Inhalt ab (oben)<input name="a4_inhalt_oben" type="number" min="20" max="200"></label>
+                <label>Anschrift oben<input name="a4_adresse_oben" type="number" min="10" max="120"></label>
+                <label>Anschrift links<input name="a4_adresse_links" type="number" min="5" max="120"></label>
+              </div>
+              <p class="hinweis">Fensterkuvert nach DIN 5008: Anschrift 45 mm von oben (Form B) bzw. 27 mm (Form A), 20 mm von links.</p>
+              <div class="unterueberschrift">Schrift</div>
+              <div class="dreispaltig">
+                <label>Schriftart<select name="a4_schrift"><option value="Helvetica">Helvetica (Arial)</option><option value="Times-Roman">Times</option><option value="Courier">Courier</option></select></label>
+                <label>Größe (pt)<input name="a4_schriftgroesse" type="number" min="7" max="14"></label>
+                <label>Tabellenkopf<input name="a4_tabellenfarbe" type="color"></label>
+              </div>
+            </div>
+            <div class="spalte">
+              <div class="unterueberschrift">Texte</div>
+              <label>Rechnung – Einleitung<textarea name="a4_text_rechnung_einleitung" rows="2" placeholder="z. B. Wir erlauben uns, folgende Leistungen in Rechnung zu stellen:"></textarea></label>
+              <label>Rechnung – Schlusstext<textarea name="a4_text_rechnung_schluss" rows="2"></textarea></label>
+              <label>Lieferschein – Einleitung<textarea name="a4_text_lieferschein_einleitung" rows="2"></textarea></label>
+              <label>Lieferschein – Schlusstext<textarea name="a4_text_lieferschein_schluss" rows="2"></textarea></label>
+              <div class="zeile"><button class="btn" type="button" data-vorschau-a4="Rechnung"><i data-i="a4"></i>Vorschau Rechnung</button>
+                <button class="btn ghost" type="button" data-vorschau-a4="Lieferschein">Vorschau Lieferschein</button></div>
+              <p class="hinweis">Die Vorschau verwendet die aktuellen Eingaben – auch bevor gespeichert wurde.</p>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset><legend>Bondrucker-Papier</legend>
+          <div class="zweispaltig">
+            <label>Papierbreite<select name="bon_papierbreite" id="bon-papier"><option value="80">80 mm</option><option value="58">58 mm</option></select></label>
+            <label>Zeichen pro Zeile<input name="bon_zeichen" type="number" min="24" max="64"></label>
+            <label>Druckbreite (Punkte)<input name="bon_breite_px" type="number" min="200" max="640"></label>
+            <label>Schrift<select name="bon_schrift"><option value="a">A – normal</option><option value="b">B – klein (mehr Zeichen)</option></select></label>
+            <label>Druckerprofil<select name="bon_profil" id="bon-profil"></select></label>
+            <label>QR-Code-Größe<input name="bon_qr_groesse" type="number" min="1" max="16"></label>
+            <label>Leerzeilen vor Schnitt<input name="bon_vorschub" type="number" min="0" max="10"></label>
+            <label>Abschnitt<select name="bon_schnitt"><option value="teil">Teilschnitt</option><option value="voll">Vollschnitt</option><option value="kein">kein Schnitt</option></select></label>
+          </div>
+          <label>Zusätzlicher Kopftext (z. B. Öffnungszeiten, Telefon)<textarea name="bon_kopftext" rows="2"></textarea></label>
+          <label class="switch"><input type="checkbox" data-schalter="bon_kopf_zentriert"><span></span>Kopf zentriert drucken</label>
+          <input type="hidden" name="bon_kopf_zentriert">
+          <p class="hinweis">Typisch: 80 mm → 42 Zeichen (Schrift A) bzw. 56 (Schrift B), Druckbreite 512–576.
+            58 mm → 32 Zeichen, Druckbreite 384. Falsche Umlaute/€? Passendes Druckerprofil wählen.</p>
+          <div class="zeile"><button class="btn" type="button" id="btn-bon-vorschau"><i data-i="bon"></i>Vorschau Bon</button></div>
+        </fieldset>
         <fieldset><legend>Benutzer</legend>
           <ul class="liste kompakt" id="benutzer-liste"></ul>
           <label>Automatisch abmelden nach (Minuten, 0 = nie)<input name="auto_abmelden_min" type="number" min="0"></label>

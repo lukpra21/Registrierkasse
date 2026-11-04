@@ -412,3 +412,22 @@ label > input:not([type=checkbox]):not([type=color]), label > select, label > te
 .chip.mehr::before { display: none; }
 .hinweis-liste { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 .hinweis-liste li .chip { width: 100%; justify-content: flex-start; padding: 10px 12px; font-size: 13px; }
+
+/* Briefpapier & Bon-Einstellungen */
+fieldset.breit { grid-column: 1 / -1; }
+.briefpapier-raster { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.unterueberschrift { font-weight: 650; font-size: 13px; margin-top: 4px; }
+.dreispaltig { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dreispaltig > * { min-width: 0; }
+.briefpapier-zeile { display: grid; grid-template-columns: 90px 1fr auto auto; gap: 8px; align-items: center; font-size: 13px; }
+.briefpapier-zeile b { font-weight: 600; color: var(--text-2); }
+.briefpapier-zeile b.da { color: var(--gruen); }
+label > input[type=color] { width: 100%; height: 38px; padding: 2px; }
+.pdf-vorschau { width: 100%; height: 72vh; border: 0; border-radius: 10px; background: #fff; }
+.bon-vorschau { display: flex; justify-content: center; padding: 14px; background: var(--linie); border-radius: 12px; max-height: 64vh; overflow: auto; }
+.bon-papier { background: #fff; color: #111; font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: 12px;
+  line-height: 1.35; padding: 14px 10px 24px; box-shadow: 0 6px 20px rgba(0,0,0,.18); white-space: pre; }
+.bon-papier.schrift-b { font-size: 10px; }
+.bon-papier .zentriert { text-align: center; }
+.bon-papier .qr { margin: 10px auto 0; background: repeating-conic-gradient(#111 0 25%, #fff 0 50%) 0 0 / 8px 8px; }
+.bon-papier .schnitt { border-top: 2px dashed #999; margin-top: 12px; text-align: center; font-size: 10px; color: #999; padding-top: 2px; }
