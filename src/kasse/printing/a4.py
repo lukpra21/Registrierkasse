@@ -141,8 +141,18 @@ def _render(con: sqlite3.Connection, daten: A4Daten, ziel: Path | str) -> Path:
         el.append(Spacer(1, 20 * mm))
         el.append(Paragraph("Ware erhalten: ______________________________", st["Normal"]))
 
+    logo = _logo_bild(e("firma_logo"))
+
     def fuss(canvas, doc):
         canvas.saveState()
+        if logo is not None and doc.page == 1:
+            from reportlab.lib.utils import ImageReader
+
+            img = ImageReader(logo)
+            b, h = img.getSize()
+            max_b, max_h = 50 * mm, 22 * mm
+            f = min(max_b / b, max_h / h)
+            canvas.drawImage(img, A4[0] - 20 * mm - b * f, A4[1] - 12 * mm - h * f, b * f, h * f, mask="auto")
         canvas.setFont("Helvetica", 7)
         teile = [e("firma_name"), e("firma_uid") and f"UID {e('firma_uid')}", e("firma_fn") and f"FN {e('firma_fn')}",
                  e("firma_iban") and f"IBAN {e('firma_iban')}"]
@@ -154,6 +164,19 @@ def _render(con: sqlite3.Connection, daten: A4Daten, ziel: Path | str) -> Path:
                       topMargin=20 * mm, bottomMargin=20 * mm, title=daten.titel).build(
         el, onFirstPage=fuss, onLaterPages=fuss)
     return ziel
+
+
+def _logo_bild(data_url: str | None):
+    """Logo aus den Einstellungen (data:image/…;base64,…) als Datei-ähnliches Objekt."""
+    import base64
+    import io
+
+    if not data_url or "," not in data_url:
+        return None
+    try:
+        return io.BytesIO(base64.b64decode(data_url.split(",", 1)[1]))
+    except ValueError:
+        return None
 
 
 def _empfaenger(k) -> list[str]:

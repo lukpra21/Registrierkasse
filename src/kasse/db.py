@@ -113,6 +113,82 @@ CREATE TABLE IF NOT EXISTS dokumentpositionen (
 );
 """
 
+# Schema-Erweiterungen; Index + 1 = PRAGMA user_version nach Anwendung
+MIGRATIONEN = [
+    # 1: Benutzer, Zahlungen (Mischzahlung), Kassenbuch, Gutscheine, Lager, Rabatte, Ereignisprotokoll
+    """
+    CREATE TABLE benutzer (
+        id       INTEGER PRIMARY KEY,
+        name     TEXT NOT NULL UNIQUE,
+        pin_hash TEXT NOT NULL,
+        rolle    TEXT NOT NULL CHECK (rolle IN ('chef', 'kassier')),
+        aktiv    INTEGER NOT NULL DEFAULT 1
+    );
+    ALTER TABLE belege ADD COLUMN benutzer_id INTEGER REFERENCES benutzer(id);
+    ALTER TABLE belegpositionen ADD COLUMN rabatt_cent INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE zahlungen (
+        id         INTEGER PRIMARY KEY,
+        beleg_id   INTEGER NOT NULL REFERENCES belege(id),
+        art        TEXT NOT NULL,
+        betrag_cent INTEGER NOT NULL,
+        referenz   TEXT
+    );
+    CREATE INDEX zahlungen_beleg ON zahlungen(beleg_id);
+    INSERT INTO zahlungen (beleg_id, art, betrag_cent)
+        SELECT id, zahlungsart, betrag_normal + betrag_ermaessigt1 + betrag_ermaessigt2 + betrag_null + betrag_besonders
+        FROM belege WHERE zahlungsart IS NOT NULL AND art IN ('Barumsatz', 'Storno');
+    CREATE TABLE kassenbuch (
+        id          INTEGER PRIMARY KEY,
+        zeitpunkt   TEXT NOT NULL,
+        art         TEXT NOT NULL CHECK (art IN ('Anfangsbestand', 'Einlage', 'Entnahme', 'Differenz')),
+        betrag_cent INTEGER NOT NULL,
+        text        TEXT,
+        benutzer_id INTEGER REFERENCES benutzer(id)
+    );
+    CREATE TABLE zaehlprotokolle (
+        id          INTEGER PRIMARY KEY,
+        zeitpunkt   TEXT NOT NULL,
+        soll_cent   INTEGER NOT NULL,
+        ist_cent    INTEGER NOT NULL,
+        details     TEXT,
+        benutzer_id INTEGER REFERENCES benutzer(id)
+    );
+    CREATE TABLE gutscheine (
+        id              INTEGER PRIMARY KEY,
+        code            TEXT NOT NULL UNIQUE,
+        wert_cent       INTEGER NOT NULL,
+        rest_cent       INTEGER NOT NULL,
+        verkauf_beleg_id INTEGER REFERENCES belege(id),
+        erstellt        TEXT NOT NULL,
+        gueltig_bis     TEXT
+    );
+    CREATE TABLE gutschein_buchungen (
+        gutschein_id INTEGER NOT NULL REFERENCES gutscheine(id),
+        beleg_id     INTEGER NOT NULL REFERENCES belege(id),
+        betrag_cent  INTEGER NOT NULL
+    );
+    ALTER TABLE artikel ADD COLUMN lagerstand TEXT;
+    ALTER TABLE artikel ADD COLUMN mindestbestand TEXT;
+    CREATE TABLE lagerbewegungen (
+        id         INTEGER PRIMARY KEY,
+        artikel_id INTEGER NOT NULL REFERENCES artikel(id),
+        zeitpunkt  TEXT NOT NULL,
+        menge      TEXT NOT NULL,
+        grund      TEXT NOT NULL
+    );
+    ALTER TABLE dokumente ADD COLUMN bezahlt_am TEXT;
+    ALTER TABLE dokumente ADD COLUMN gemailt_am TEXT;
+    UPDATE dokumente SET bezahlt_am = datum WHERE typ = 'Rechnung' AND beleg_id IS NOT NULL;
+    CREATE TABLE ereignisse (
+        id          INTEGER PRIMARY KEY,
+        zeitpunkt   TEXT NOT NULL,
+        benutzer_id INTEGER REFERENCES benutzer(id),
+        art         TEXT NOT NULL,
+        text        TEXT
+    );
+    """,
+]
+
 STANDARD_STEUERSAETZE = [
     ("20", "Normal", "Normalsteuersatz"),
     ("10", "Ermaessigt-1", "Ermäßigt 10 %"),
@@ -128,6 +204,7 @@ def verbinden(pfad: Path | str) -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     con.executescript(SCHEMA)
+    _migrieren(con)
     if con.execute("SELECT COUNT(*) FROM steuersaetze").fetchone()[0] == 0:
         con.executemany(
             "INSERT INTO steuersaetze (prozent, rksv_satz, bezeichnung) VALUES (?, ?, ?)",
@@ -135,6 +212,20 @@ def verbinden(pfad: Path | str) -> sqlite3.Connection:
         )
     con.commit()
     return con
+
+
+def _migrieren(con: sqlite3.Connection) -> None:
+    version = con.execute("PRAGMA user_version").fetchone()[0]
+    for i, skript in enumerate(MIGRATIONEN[version:], start=version + 1):
+        con.executescript(f"BEGIN; {skript}; PRAGMA user_version = {i}; COMMIT;")
+
+
+def ereignis(con: sqlite3.Connection, art: str, text: str = "", benutzer_id: int | None = None) -> None:
+    """Protokolliert sicherheitsrelevante Vorgänge (Anmeldung, Lade öffnen, Einstellungen …)."""
+    import datetime as dt
+
+    con.execute("INSERT INTO ereignisse (zeitpunkt, benutzer_id, art, text) VALUES (?,?,?,?)",
+                (dt.datetime.now().isoformat(timespec="seconds"), benutzer_id, art, text))
 
 
 def einstellung(con: sqlite3.Connection, schluessel: str, standard: str | None = None) -> str | None:

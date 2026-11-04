@@ -36,10 +36,15 @@ class Position:
     einzelpreis_cent: int  # brutto
     steuer_prozent: str
     artikel_id: int | None = None
+    rabatt_cent: int = 0  # Rabatt auf die gesamte Position (brutto, positiv)
+
+    @property
+    def brutto_vor_rabatt(self) -> int:
+        return int((self.menge * self.einzelpreis_cent).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
     @property
     def summe_cent(self) -> int:
-        return int((self.menge * self.einzelpreis_cent).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        return self.brutto_vor_rabatt - self.rabatt_cent
 
 
 class Kasse:
@@ -125,6 +130,8 @@ class Kasse:
         kunde_id: int | None = None,
         storno_von: int | None = None,
         ausfall_erlaubt: bool = True,
+        zahlungen: list[tuple[str, int, str | None]] | None = None,
+        benutzer_id: int | None = None,
     ) -> int:
         if self.ist_geschlossen():
             raise KassenFehler("Kasse wurde mit Schlussbeleg außer Betrieb genommen")
@@ -173,20 +180,24 @@ class Kasse:
         cur = self.con.execute(
             "INSERT INTO belege (belegnummer, art, zeitpunkt, kunde_id, zahlungsart, betrag_normal,"
             " betrag_ermaessigt1, betrag_ermaessigt2, betrag_null, betrag_besonders, umsatzzaehler,"
-            " zertifikat_serie, jws, ausfall, storno_von) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " zertifikat_serie, jws, ausfall, storno_von, benutzer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 belegnummer, art, zeit, kunde_id, zahlungsart,
                 *(betraege.get(s, 0) for s in RKSV_SAETZE),
-                zaehler_neu, serie, jws, int(ausfall), storno_von,
+                zaehler_neu, serie, jws, int(ausfall), storno_von, benutzer_id,
             ),
         )
         beleg_id = cur.lastrowid
         for i, p in enumerate(positionen or [], start=1):
             self.con.execute(
-                "INSERT INTO belegpositionen VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO belegpositionen (beleg_id, pos, artikel_id, bezeichnung, menge, einzelpreis_cent,"
+                " steuer_prozent, summe_cent, rabatt_cent) VALUES (?,?,?,?,?,?,?,?,?)",
                 (beleg_id, i, p.artikel_id, p.bezeichnung, str(p.menge), p.einzelpreis_cent,
-                 p.steuer_prozent, p.summe_cent),
+                 p.steuer_prozent, p.summe_cent, p.rabatt_cent),
             )
+        for art_z, betrag, referenz in zahlungen or []:
+            self.con.execute("INSERT INTO zahlungen (beleg_id, art, betrag_cent, referenz) VALUES (?,?,?,?)",
+                             (beleg_id, art_z, betrag, referenz))
         if ausfall and not self.ausfall_aktiv():
             setze_einstellung(self.con, "ausfall_seit", zeit)
         self.con.commit()
@@ -236,9 +247,26 @@ class Kasse:
         zahlungsart: str = "Bar",
         kunde_id: int | None = None,
         training: bool = False,
+        zahlungen: list[tuple[str, int, str | None]] | None = None,
+        benutzer_id: int | None = None,
     ) -> int:
+        """Barumsatz. ``zahlungen`` = [(Art, Betrag in Cent, Referenz)] für Mischzahlungen."""
         if not positionen:
             raise KassenFehler("Keine Positionen")
+        for p in positionen:
+            if p.rabatt_cent and abs(p.rabatt_cent) > abs(p.brutto_vor_rabatt):
+                raise KassenFehler(f"Rabatt höher als Positionsbetrag: {p.bezeichnung}")
+        summe = sum(p.summe_cent for p in positionen)
+        if zahlungen is None:
+            zahlungen = [(zahlungsart, summe, None)]
+        else:
+            if sum(z[1] for z in zahlungen) != summe:
+                raise KassenFehler("Summe der Zahlungen entspricht nicht dem Belegbetrag")
+            arten = []
+            for z in zahlungen:
+                if z[0] not in arten:
+                    arten.append(z[0])
+            zahlungsart = "+".join(arten) or zahlungsart
         self._nach_ausfall_sammelbeleg()
         return self._erstelle(
             "Training" if training else "Barumsatz",
@@ -246,22 +274,28 @@ class Kasse:
             positionen,
             zahlungsart=zahlungsart,
             kunde_id=kunde_id,
+            zahlungen=[] if training else zahlungen,
+            benutzer_id=benutzer_id,
         )
 
-    def storno(self, beleg_id: int) -> int:
+    def storno(self, beleg_id: int, benutzer_id: int | None = None) -> int:
         orig = self.con.execute("SELECT * FROM belege WHERE id = ?", (beleg_id,)).fetchone()
         if not orig or orig["art"] != "Barumsatz":
             raise KassenFehler("Nur Barumsatz-Belege können storniert werden")
         if self.con.execute("SELECT 1 FROM belege WHERE storno_von = ?", (beleg_id,)).fetchone():
             raise KassenFehler("Beleg wurde bereits storniert")
         positionen = [
-            Position(r["bezeichnung"], -Decimal(r["menge"]), r["einzelpreis_cent"], r["steuer_prozent"], r["artikel_id"])
+            Position(r["bezeichnung"], -Decimal(r["menge"]), r["einzelpreis_cent"], r["steuer_prozent"], r["artikel_id"],
+                     -r["rabatt_cent"])
             for r in self.con.execute("SELECT * FROM belegpositionen WHERE beleg_id = ? ORDER BY pos", (beleg_id,))
         ]
         self._nach_ausfall_sammelbeleg()
         return self._erstelle(
             "Storno", self._betraege(positionen), positionen,
             zahlungsart=orig["zahlungsart"], kunde_id=orig["kunde_id"], storno_von=beleg_id,
+            zahlungen=[(z["art"], -z["betrag_cent"], z["referenz"]) for z in
+                       self.con.execute("SELECT * FROM zahlungen WHERE beleg_id = ?", (beleg_id,))],
+            benutzer_id=benutzer_id,
         )
 
     def schlussbeleg(self) -> int:

@@ -80,6 +80,7 @@ def main(argv=None):
 
     api = standard_api(args.datenbank)
     _sicherungs_waechter(api)
+    api.update_im_hintergrund()
 
     if not args.browser:
         try:
@@ -90,6 +91,7 @@ def main(argv=None):
 
     if args.browser:
         server = http_server(api, args.port)
+        api._beenden = lambda: threading.Thread(target=server.shutdown, daemon=True).start()
         url = f"http://127.0.0.1:{args.port}/"
         print(f"Kasse läuft auf {url}  (Beenden mit Strg+C)")
         webbrowser.open(url)
@@ -105,8 +107,9 @@ def main(argv=None):
     bruecke = Bruecke()
     for name, f in oeffentliche_methoden(api).items():
         setattr(bruecke, name, f)
-    webview.create_window("Registrierkasse", str(WEB / "index.html"), js_api=bruecke,
-                          width=1366, height=820, min_size=(1024, 680))
+    fenster = webview.create_window("Registrierkasse", str(WEB / "index.html"), js_api=bruecke,
+                                    width=1366, height=820, min_size=(1024, 680))
+    api._beenden = fenster.destroy
     webview.start()
 
 

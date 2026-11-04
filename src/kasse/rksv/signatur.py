@@ -11,7 +11,6 @@ import base64
 import datetime as dt
 import hashlib
 import json
-import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -190,17 +189,18 @@ def pruefe_jws(jws: str, zertifikat_b64: str) -> bool:
 def signer_aus_einstellungen(con) -> Signer:
     """Baut den Signer anhand der gespeicherten Einstellungen.
 
-    A-Trust-Passwort wird NICHT in der Datenbank gespeichert, sondern aus der
-    Umgebungsvariable KASSE_ATRUST_PASSWORT gelesen.
+    Das A-Trust-Passwort wird NICHT in der Datenbank gespeichert, sondern in der
+    Windows-Anmeldeinformationsverwaltung (bzw. Umgebungsvariable KASSE_ATRUST_PASSWORT).
     """
+    from .. import geheim
     from ..db import einstellung
 
     art = einstellung(con, "signer", "test")
     if art == "atrust":
         benutzer = einstellung(con, "atrust_benutzer")
-        passwort = os.environ.get("KASSE_ATRUST_PASSWORT")
+        passwort = geheim.lesen("atrust")
         if not benutzer or not passwort:
-            raise SignaturFehler("A-Trust-Benutzer oder KASSE_ATRUST_PASSWORT fehlt")
+            raise SignaturFehler("A-Trust-Benutzer oder -Passwort fehlt (Einstellungen → A-Trust)")
         basis = ATRUST_TEST if einstellung(con, "atrust_umgebung", "produktiv") == "test" else ATRUST_PRODUKTIV
         return ATrustOnlineSigner(benutzer, passwort, basis)
     pem = einstellung(con, "test_signer_pem")
@@ -211,3 +211,11 @@ def signer_aus_einstellungen(con) -> Signer:
         setze_einstellung(con, "test_signer_pem", signer.privat_pem().decode())
         con.commit()
     return signer
+
+
+def signer_testen(signer: Signer) -> dict:
+    """Verbindungstest: Zertifikat abrufen, Testdaten signieren, Signatur prüfen."""
+    z = signer.zertifikat()
+    jws = signer.signiere_jws("_R1-TEST_Verbindungstest")
+    return {"seriennummer": z.seriennummer, "signatur_gueltig": pruefe_jws(jws, z.zertifikat_b64),
+            "zertifizierungsstellen": len(z.zertifizierungsstellen)}

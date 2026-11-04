@@ -66,19 +66,28 @@ def bon_text(con: sqlite3.Connection, beleg_id: int) -> list[str]:
     z.append(f"{BELEG_TITEL.get(b['art'], b['art'])}\n")
     z.append(_zeile(f"Beleg-Nr. {b['belegnummer']}", b["zeitpunkt"].replace("T", " ")))
     z.append(f"Kasse: {e('kassen_id')}\n")
+    if b["benutzer_id"]:
+        name = con.execute("SELECT name FROM benutzer WHERE id = ?", (b["benutzer_id"],)).fetchone()
+        if name:
+            z.append(f"Es bediente Sie: {name[0]}\n")
     z.append("-" * BREITE + "\n")
 
     steuern: dict[str, int] = {}
     for p in con.execute("SELECT * FROM belegpositionen WHERE beleg_id = ? ORDER BY pos", (beleg_id,)):
-        z.append(_zeile(p["bezeichnung"], anzeige(p["summe_cent"])))
+        z.append(_zeile(p["bezeichnung"], anzeige(p["summe_cent"] + p["rabatt_cent"])))
         if p["menge"] not in ("1", "-1"):
             z.append(f"  {p['menge']} x {anzeige(p['einzelpreis_cent'])}\n")
+        if p["rabatt_cent"]:
+            z.append(_zeile("  Rabatt", anzeige(-p["rabatt_cent"])))
         steuern[p["steuer_prozent"]] = steuern.get(p["steuer_prozent"], 0) + p["summe_cent"]
 
     summe = sum(steuern.values())
     z.append("=" * BREITE + "\n")
     z.append(_zeile("SUMME EUR", anzeige(summe)))
-    if b["zahlungsart"]:
+    zahlungen = con.execute("SELECT art, betrag_cent FROM zahlungen WHERE beleg_id = ?", (beleg_id,)).fetchall()
+    for zl in zahlungen:
+        z.append(_zeile(f"Bezahlt: {zl['art']}", anzeige(zl["betrag_cent"])))
+    if not zahlungen and b["zahlungsart"]:
         z.append(_zeile(f"Bezahlt: {b['zahlungsart']}", anzeige(summe)))
     if steuern:
         z.append("\n")
@@ -100,9 +109,30 @@ def bon_text(con: sqlite3.Connection, beleg_id: int) -> list[str]:
 def drucke_bon(con: sqlite3.Connection, beleg_id: int, drucker=None, drucker_name: str | None = None) -> None:
     p = drucker or drucker_aus_einstellungen(con, drucker_name)
     jws = con.execute("SELECT jws FROM belege WHERE id = ?", (beleg_id,)).fetchone()["jws"]
+    logo = einstellung(con, "firma_logo")
+    if logo and einstellung(con, "bon_logo") == "1":
+        try:
+            import base64
+            import io
+
+            from PIL import Image
+
+            bild = Image.open(io.BytesIO(base64.b64decode(logo.split(",", 1)[1]))).convert("L")
+            bild.thumbnail((384, 160))
+            p.set(align="center")
+            p.image(bild, center=True)
+        except Exception:
+            pass  # Logo ist optional
     p.set(align="left")
     for zeile in bon_text(con, beleg_id):
         p.text(zeile)
     p.set(align="center")
     p.qr(maschinenlesbarer_code(jws), size=4, native=False)
     p.cut()
+
+
+def kassenlade_oeffnen(con: sqlite3.Connection, drucker=None) -> None:
+    """Öffnet die am Bondrucker angeschlossene Kassenlade (ESC/POS-Impuls an Pin 2, notfalls Pin 5)."""
+    p = drucker or drucker_aus_einstellungen(con)
+    pin = int(einstellung(con, "kassenlade_pin", "2") or 2)
+    p.cashdraw(pin)
