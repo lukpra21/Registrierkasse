@@ -110,6 +110,7 @@ def main(argv=None):
     fenster = webview.create_window("Registrierkasse", str(WEB / "index.html"), js_api=bruecke,
                                     width=1366, height=820, min_size=(1024, 680))
     api._beenden = fenster.destroy
+    api._fenster = fenster
     webview.start()
 
 

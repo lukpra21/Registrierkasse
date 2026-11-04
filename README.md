@@ -100,8 +100,28 @@ und Abschnitt (Teil-/Vollschnitt/kein). Die Vorschau zeigt den letzten Beleg in 
 
 ```text
 init, info, set, import-qrk, artikel, startbeleg, nullbeleg, verkauf, dep-export,
-sicherung, sicherung-planen, atrust-test, passwort, export, selbsttest
+sicherung, sicherung-planen, wiederherstellen, atrust-test, passwort, export, selbsttest
 ```
+
+## Daten wiederherstellen
+
+*Abschluss → Wiederherstellen* (oder *Einstellungen → Datensicherung*), bei einem neuen Notebook direkt im
+Einrichtungsassistenten (*Aus Sicherung wiederherstellen*):
+
+1. Sicherung wählen – aus dem Sicherungsordner oder als Datei (USB-Stick, anderer PC).
+2. Bei verschlüsselten Sicherungen das Sicherungspasswort eingeben.
+3. Vergleich prüfen: Firma, Kassen-ID, Belege, letzter Beleg, Artikel, Kunden, Rechnungen, Benutzer.
+   Gehen neuere Belege verloren oder passt die Kassen-ID nicht, warnt die Kasse und verlangt eine Bestätigung.
+4. *Jetzt wiederherstellen* – ohne Neustart. Der aktuelle Stand wird vorher automatisch gesichert, die bisherige
+   Datenbank bleibt als `kasse-vor-wiederherstellung-….db` erhalten. Danach ist eine neue Anmeldung nötig.
+
+Notfall über die Kommandozeile (Kasse vorher beenden):
+
+```bash
+kasse-cli wiederherstellen E:\Kassensicherung\kasse-sicherung-….rksich
+```
+
+Nach einer Wiederherstellung empfiehlt sich ein Nullbeleg mit Prüfung durch die BMF-Belegcheck-App.
 
 ## Belegkette prüfen
 

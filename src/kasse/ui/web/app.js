@@ -281,7 +281,9 @@ function einrichtungsDialog() {
       </div>
       <p class="hinweis">Das Passwort wird verschlüsselt in der Windows-Anmeldeinformationsverwaltung gespeichert, nicht in der Kassendatenbank.</p>
     </div>
-    <div class="modal-knöpfe"><button class="btn" id="e-ok">Einrichten</button></div>`);
+    <div class="modal-knöpfe" style="justify-content:space-between"><button class="btn ghost" id="e-sicherung"><i data-i="undo"></i>Aus Sicherung wiederherstellen</button>
+      <button class="btn" id="e-ok">Neu einrichten</button></div>`);
+  $("#e-sicherung", m).onclick = () => wiederherstellenDialog();
   m.dataset.fest = "1";
   $("#e-signer", m).onchange = (e) => { $("#e-atrust", m).style.display = e.target.value === "atrust" ? "" : "none"; };
   $("#e-ok", m).onclick = () => sicher(async () => {
@@ -1067,22 +1069,87 @@ $("#btn-export").onclick = () => {
     <div class="modal-knöpfe"><button class="btn ghost" onclick="schliessen()">Abbrechen</button><button class="btn" id="ex-ok">Exportieren</button></div>`);
   $("#ex-ok", m).onclick = () => sicher(async () => { const p = await api("export_steuerberater", $("#ex-von", m).value, $("#ex-bis", m).value); schliessen(); toast(`Export gespeichert: ${p}`, "ok", 8000); });
 };
-$("#btn-wiederherstellen").onclick = () => sicher(async () => {
-  const l = await api("sicherungen");
-  const m = dialog(`<h3>Sicherung wiederherstellen</h3><p class="unter">Achtung: Belege, die nach der Sicherung erstellt wurden, gehen verloren und unterbrechen die RKSV-Belegkette.
-    Nur nach Datenverlust verwenden und mit dem Steuerberater abstimmen. Die aktuelle Datenbank wird aufgehoben.</p>
-    <ul class="liste" style="max-height:300px">${l.map((s) => `<li data-d="${esc(s.datei)}" data-v="${s.verschluesselt ? 1 : 0}"><span>${esc(s.name)}<small>${(s.groesse / 1024).toFixed(0)} KB</small></span>${s.verschluesselt ? '<span class="badge blau">verschlüsselt</span>' : ""}</li>`).join("") || "<li><small>Keine Sicherungen gefunden</small></li>"}</ul>`, { breit: true });
-  $(".liste", m).onclick = async (e) => {
-    const li = e.target.closest("li[data-d]"); if (!li) return;
-    if (!(await bestaetigen("Wiederherstellen?", `${esc(li.dataset.d)} wird beim nächsten Start übernommen.`, "Wiederherstellen", true))) return;
-    sicher(async () => {
-      let pw = "";
-      if (li.dataset.v === "1" && !S.status.sicherung_verschluesselt) { pw = await eingabe("Sicherungspasswort", { feld: "Passwort", typ: "password" }); if (pw == null) return; }
-      const r = await api("sicherung_wiederherstellen", li.dataset.d, pw);
-      dialog(`<h3>Wiederherstellung vorgemerkt</h3><p class="unter">${esc(r)}</p><div class="modal-knöpfe"><button class="btn" onclick="schliessen()">OK</button></div>`);
-    });
-  };
-});
+/* ---------------------------------------------------------------- Wiederherstellung */
+
+const groesse = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+
+/** Schritt 1: Sicherung auswählen (Sicherungsordner, Dateidialog oder Upload). */
+async function wiederherstellenDialog() {
+  let liste = [];
+  try { liste = await api("sicherungen"); } catch (e) { /* Ordner evtl. nicht erreichbar */ }
+  const m = dialog(`<h3>Sicherung wiederherstellen</h3>
+    <p class="unter">Wählen Sie eine Sicherung. Vor dem Wiederherstellen sehen Sie, was sie enthält – es wird noch nichts verändert.</p>
+    <div class="unterueberschrift">Im Sicherungsordner</div>
+    <ul class="liste sicherungsliste" style="max-height:280px">${liste.map((x) => `<li data-d="${esc(x.datei)}">
+      <span>${x.datum ? esc(zeit(x.datum)) : esc(x.name)}<small>${esc(x.name)} · ${groesse(x.groesse)}</small></span>
+      ${x.verschluesselt ? '<span class="badge blau">verschlüsselt</span>' : '<span class="badge">unverschlüsselt</span>'}</li>`).join("")
+      || "<li><small>Keine Sicherungen im eingestellten Ordner gefunden.</small></li>"}</ul>
+    <div class="modal-knöpfe" style="justify-content:space-between">
+      <label class="btn ghost datei" id="w-datei-label">Andere Datei wählen (USB-Stick, anderer PC) …<input type="file" id="w-datei" accept=".rksich,.zip" hidden></label>
+      <button class="btn ghost" onclick="schliessen()">Abbrechen</button></div>`, { breit: true });
+  $(".sicherungsliste", m).onclick = (e) => { const li = e.target.closest("li[data-d]"); if (li) sicherungPruefen({ datei: li.dataset.d }); };
+  if (S.status.dateidialog) {  // Programmfenster: nativer Windows-Dateidialog (auch für große Dateien)
+    $("#w-datei-label", m).onclick = (e) => {
+      e.preventDefault();
+      sicher(async () => { const r = await api("sicherung_datei_waehlen"); if (r) sicherungPruefen({ datei: r.datei }); });
+    };
+  } else {
+    $("#w-datei", m).onchange = (e) => {
+      const datei = e.target.files[0]; if (!datei) return;
+      const r = new FileReader();
+      r.onload = () => sicherungPruefen({ daten: r.result, name: datei.name });
+      r.readAsDataURL(datei);
+    };
+  }
+}
+
+/** Schritt 2: Sicherung prüfen (ggf. Passwort abfragen) und Inhalt mit der aktuellen Kasse vergleichen. */
+async function sicherungPruefen(quelle, passwort = "") {
+  let r;
+  try { r = await api("sicherung_info", quelle, passwort); } catch (e) {
+    if (e.message.startsWith("PASSWORT")) {
+      const pw = await eingabe("Sicherungspasswort", {
+        text: e.message.startsWith("PASSWORT_FALSCH") ? "<b style='color:var(--rot)'>Das Passwort war falsch.</b> Bitte erneut eingeben." : "Diese Sicherung ist verschlüsselt.",
+        feld: "Passwort", typ: "password", knopf: "Prüfen" });
+      if (pw) return sicherungPruefen(quelle, pw);
+      return;
+    }
+    return toast(e.message, "fehler", 7000);
+  }
+  const s_ = r.sicherung, a = r.aktuell;
+  const zeile = (titel, w1, w2) => `<tr><td>${titel}</td><td><b>${esc(w1 ?? "–")}</b></td><td>${esc(w2 ?? "–")}</td></tr>`;
+  const m = dialog(`<h3>Sicherung prüfen</h3><p class="unter">${esc(s_.datei)}${s_.datum ? ` · gesichert am ${esc(zeit(s_.datum))}` : ""}</p>
+    <table class="tabelle vergleich"><thead><tr><th></th><th>Sicherung</th><th>Aktuelle Kasse</th></tr></thead><tbody>
+      ${zeile("Firma", s_.firma, a.firma)}${zeile("Kassen-ID", s_.kassen_id, a.kassen_id)}
+      ${zeile("Belege", s_.belege, a.belege)}${zeile("Letzter Beleg", s_.letzte_belegnummer ? `Nr. ${s_.letzte_belegnummer} · ${zeit(s_.letzter_beleg)}` : "–", a.letzte_belegnummer ? `Nr. ${a.letzte_belegnummer} · ${zeit(a.letzter_beleg)}` : "–")}
+      ${zeile("Artikel", s_.artikel, a.artikel)}${zeile("Kunden", s_.kunden, a.kunden)}${zeile("Rechnungen", s_.rechnungen, a.rechnungen)}${zeile("Benutzer", s_.benutzer, a.benutzer)}
+    </tbody></table>
+    ${r.warnungen.length ? `<div class="warnbox">${r.warnungen.map((w) => `<p>⚠ ${esc(w)}</p>`).join("")}</div>` : `<p class="hinweis" style="margin-top:10px">✓ Keine Konflikte mit der aktuellen Kasse gefunden.</p>`}
+    <p class="hinweis">Vor dem Wiederherstellen wird der aktuelle Stand automatisch gesichert; die bisherige Datenbank bleibt zusätzlich im Datenverzeichnis erhalten.</p>
+    <label class="switch" style="margin-top:6px"><input type="checkbox" id="w-ok" ${r.warnungen.length ? "" : "checked"}><span></span>Ich möchte diese Sicherung wiederherstellen</label>
+    <div class="modal-knöpfe"><button class="btn ghost" id="w-zurueck">Zurück</button><button class="btn gefahr" id="w-los" ${r.warnungen.length ? "disabled" : ""}><i data-i="undo"></i>Jetzt wiederherstellen</button></div>`, { breit: true });
+  $("#w-ok", m).onchange = (e) => ($("#w-los", m).disabled = !e.target.checked);
+  $("#w-zurueck", m).onclick = () => wiederherstellenDialog();
+  $("#w-los", m).onclick = () => sicher(async () => {
+    $("#w-los", m).disabled = true;
+    m.dataset.fest = "1";
+    try {
+      const e = await api("sicherung_wiederherstellen", quelle, passwort);
+      delete m.dataset.fest;
+      const m2 = dialog(`<div class="erfolg"><span class="haken"><i data-i="check"></i></span><div><h3>Wiederhergestellt</h3>
+        <p class="unter" style="margin:0">Kasse ${esc(e.info.kassen_id || "")} · ${e.info.belege} Belege</p></div></div>
+        <p class="hinweis">Vorheriger Stand gesichert: ${esc(e.sicherheitskopie || "– (keine Daten vorhanden)")}</p>
+        ${e.alte_datenbank ? `<p class="hinweis">Bisherige Datenbank aufgehoben: ${esc(e.alte_datenbank)}</p>` : ""}
+        <p class="hinweis">Empfehlung: danach unter Abschluss einen Nullbeleg erstellen und mit der BMF-Belegcheck-App prüfen.</p>
+        <div class="modal-knöpfe"><button class="btn" id="w-fertig">Weiter</button></div>`);
+      m2.dataset.fest = "1";
+      $("#w-fertig", m2).onclick = () => location.reload();
+    } catch (err) { delete m.dataset.fest; $("#w-los", m).disabled = false; throw err; }
+  });
+}
+
+$("#btn-wiederherstellen").onclick = () => wiederherstellenDialog();
+$("#btn-wiederherstellen2").onclick = () => wiederherstellenDialog();
 
 /* ====================================================================== Einstellungen */
 

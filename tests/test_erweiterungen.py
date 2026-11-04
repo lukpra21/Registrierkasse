@@ -333,3 +333,79 @@ def test_selbsttest():
 
     zeilen = []
     assert ausfuehren(zeilen.append), "\n".join(zeilen)
+
+
+# ------------------------------------------------------------------ Wiederherstellung
+
+
+def test_wiederherstellung_sofort(api, tmp_path):
+    import base64 as b64
+
+    from kasse import sicherung as sich
+
+    db.setze_einstellung(api.con, "firma_name", "Stand A")
+    api.con.commit()
+    ok(api.verkaufen([_p(api, "2")], "Bar"))
+    ziel = tmp_path / "sich"
+    ziel.mkdir()
+    db.setze_einstellung(api.con, "sicherung_ziel", str(ziel))
+    api.con.commit()
+    archiv = sich.sichern(api.con, ziel, passwort="pw-123")
+    # danach weiterarbeiten: zwei neue Belege, andere Firma
+    ok(api.verkaufen([_p(api, "2")], "Bar"))
+    ok(api.verkaufen([_p(api, "2")], "Karte"))
+    db.setze_einstellung(api.con, "firma_name", "Stand B")
+    api.con.commit()
+
+    quelle = {"datei": str(archiv)}
+    f = api.sicherung_info(quelle)
+    assert not f["ok"] and f["fehler"].startswith("PASSWORT:")
+    assert api.sicherung_info(quelle, "falsch")["fehler"].startswith("PASSWORT_FALSCH:")
+    info = ok(api.sicherung_info(quelle, "pw-123"))
+    assert info["sicherung"]["firma"] == "Stand A" and info["sicherung"]["belege"] == 2
+    assert any("2 neuere Beleg" in w for w in info["warnungen"])
+    # fremder Pfad wird abgelehnt (nur Sicherungsordner, Dateidialog oder Upload)
+    assert not api.sicherung_info({"datei": "/etc/passwd"}, "x")["ok"]
+
+    r = ok(api.sicherung_wiederherstellen(quelle, "pw-123"))
+    assert r["alte_datenbank"] and Path(r["alte_datenbank"]).exists()
+    assert Path(r["sicherheitskopie"]).exists()  # vorheriger Stand automatisch gesichert
+    st = ok(api.status())
+    assert st["firma"] == "Stand A"
+    assert api.con.execute("SELECT COUNT(*) FROM belege").fetchone()[0] == 2
+    # Kasse arbeitet nach der Wiederherstellung normal weiter
+    ok(api.verkaufen([_p(api, "2")], "Bar"))
+
+    # Upload (z. B. Sicherung vom USB-Stick / anderem Rechner)
+    hoch = {"daten": b64.b64encode(Path(r["sicherheitskopie"]).read_bytes()).decode(), "name": "usb.rksich"}
+    info2 = ok(api.sicherung_info(hoch, "pw-123"))
+    assert info2["sicherung"]["firma"] == "Stand B" and info2["sicherung"]["belege"] == 4
+    ok(api.sicherung_wiederherstellen(hoch, "pw-123"))
+    assert ok(api.status())["firma"] == "Stand B"
+    arten = [e["art"] for e in ok(api.ereignisse())]
+    assert "Sicherung wiederhergestellt" in arten
+
+
+def test_wiederherstellung_ungueltige_datei(api):
+    import base64 as b64
+
+    r = api.sicherung_info({"daten": b64.b64encode(b"kein archiv").decode(), "name": "x.zip"})
+    assert not r["ok"] and "keine Sicherung" in r["fehler"]
+
+
+def test_cli_wiederherstellen(tmp_path, monkeypatch):
+    from kasse import cli, sicherung as sich
+
+    monkeypatch.setattr(geheim, "_keyring", lambda: None)
+    quelle = tmp_path / "quelle.db"
+    con = db.verbinden(quelle)
+    db.setze_einstellung(con, "kassen_id", "ALT-1")
+    db.setze_einstellung(con, "firma_name", "Aus Sicherung")
+    con.commit()
+    (tmp_path / "s").mkdir()
+    archiv = sich.sichern(con, tmp_path / "s", passwort="")
+    con.close()
+    ziel = tmp_path / "neu.db"
+    assert cli.main(["--datenbank", str(ziel), "wiederherstellen", str(archiv), "--ja"]) == 0
+    c = db.verbinden(ziel)
+    assert db.einstellung(c, "firma_name") == "Aus Sicherung"

@@ -129,7 +129,7 @@ def sichern(con: sqlite3.Connection, ziel: Path | None = None, behalten: int | N
 
 def liste(con: sqlite3.Connection) -> list[dict]:
     ziel = sicherungsziel(con)
-    return [{"datei": str(p), "name": p.name, "groesse": p.stat().st_size,
+    return [{"datei": str(p), "name": p.name, "groesse": p.stat().st_size, "datum": datum_aus_dateiname(p.name),
              "verschluesselt": p.suffix == ".rksich"} for p in reversed(_sicherungen(ziel))]
 
 
@@ -158,6 +158,101 @@ def wiederherstellen(archiv: Path | str, ziel_db: Path | str, passwort: str | No
             raise ValueError("Wiederhergestellte Datenbank ist beschädigt")
     finally:
         pruef.close()
+
+
+def archiv_lesen(daten: bytes, passwort: str | None = None) -> bytes:
+    """Sicherungsarchiv (.rksich verschlüsselt oder .zip) → Inhalt der Kassendatenbank."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(entschluesseln(daten, passwort))) as z:
+            if "kasse.db" not in z.namelist():
+                raise ValueError("Die Datei enthält keine Kassendatenbank")
+            inhalt = z.read("kasse.db")
+    except zipfile.BadZipFile as e:
+        raise ValueError("Die Datei ist keine Sicherung der Registrierkasse") from e
+    if not inhalt.startswith(b"SQLite format 3"):
+        raise ValueError("Die Sicherung enthält keine gültige Datenbank")
+    return inhalt
+
+
+def datenbank_info(db_inhalt: bytes) -> dict:
+    """Überblick über eine gesicherte Datenbank (für die Prüfung vor dem Wiederherstellen)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        pfad = Path(tmp) / "pruefung.db"
+        pfad.write_bytes(db_inhalt)
+        c = sqlite3.connect(pfad)
+        try:
+            if c.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise ValueError("Die gesicherte Datenbank ist beschädigt")
+            return _info(c)
+        finally:
+            c.close()
+
+
+def _info(c: sqlite3.Connection) -> dict:
+    def wert(sql, *args, standard=None):
+        try:
+            r = c.execute(sql, args).fetchone()
+            return r[0] if r and r[0] is not None else standard
+        except sqlite3.Error:
+            return standard
+
+    einst = lambda k: wert("SELECT wert FROM einstellungen WHERE schluessel = ?", k)  # noqa: E731
+    return {
+        "kassen_id": einst("kassen_id"),
+        "firma": einst("firma_name"),
+        "belege": wert("SELECT COUNT(*) FROM belege", standard=0),
+        "letzte_belegnummer": wert("SELECT MAX(belegnummer) FROM belege", standard=0),
+        "letzter_beleg": wert("SELECT MAX(zeitpunkt) FROM belege"),
+        "geschlossen": wert("SELECT art FROM belege ORDER BY belegnummer DESC LIMIT 1") == "Schlussbeleg",
+        "artikel": wert("SELECT COUNT(*) FROM artikel", standard=0),
+        "kunden": wert("SELECT COUNT(*) FROM kunden", standard=0),
+        "rechnungen": wert("SELECT COUNT(*) FROM dokumente WHERE typ = 'Rechnung'", standard=0),
+        "benutzer": wert("SELECT COUNT(*) FROM benutzer WHERE aktiv = 1", standard=0),
+        "gesichert": einst("sicherung_zuletzt"),
+    }
+
+
+def aktuelle_info(con: sqlite3.Connection) -> dict:
+    return _info(con)
+
+
+def vergleich_warnungen(aktuell: dict, sicherung_: dict) -> list[str]:
+    """Hinweise, was beim Wiederherstellen verloren ginge (RKSV-Belegkette)."""
+    w = []
+    if not sicherung_.get("kassen_id"):
+        w.append("Die Sicherung enthält keine eingerichtete Kasse.")
+    if aktuell.get("belege") and sicherung_.get("kassen_id") and aktuell.get("kassen_id") \
+            and aktuell["kassen_id"] != sicherung_["kassen_id"]:
+        w.append(f"Andere Kassen-ID: aktuell {aktuell['kassen_id']}, Sicherung {sicherung_['kassen_id']}.")
+    neuer = (aktuell.get("letzte_belegnummer") or 0) - (sicherung_.get("letzte_belegnummer") or 0)
+    if neuer > 0 and aktuell.get("kassen_id") == sicherung_.get("kassen_id"):
+        w.append(f"Die aktuelle Kasse enthält {neuer} neuere Beleg(e) (bis Nr. {aktuell['letzte_belegnummer']}). "
+                 "Diese gehen verloren und die RKSV-Belegkette wird unterbrochen – nur nach echtem Datenverlust "
+                 "wiederherstellen und mit dem Steuerberater abstimmen.")
+    if sicherung_.get("geschlossen"):
+        w.append("Die gesicherte Kasse wurde mit einem Schlussbeleg außer Betrieb genommen.")
+    return w
+
+
+def datum_aus_dateiname(name: str) -> str | None:
+    import re
+
+    m = re.search(r"(\d{8})-(\d{6})", name)
+    if not m:
+        return None
+    d, t = m.groups()
+    return f"{d[:4]}-{d[4:6]}-{d[6:]}T{t[:2]}:{t[2:4]}:{t[4:]}"
+
+
+def datenbank_ersetzen(db_inhalt: bytes, db_pfad: Path | str) -> Path | None:
+    """Ersetzt die (geschlossene!) Kassendatenbank; die bisherige wird aufgehoben. Liefert deren Pfad."""
+    db_pfad = Path(db_pfad)
+    neu = Path(str(db_pfad) + ".neu")
+    neu.write_bytes(db_inhalt)
+    for rest in (Path(str(db_pfad) + "-wal"), Path(str(db_pfad) + "-shm"), Path(str(db_pfad) + "-journal")):
+        if rest.exists():
+            rest.unlink()
+    return vorgemerkte_wiederherstellung_anwenden(db_pfad)
 
 
 def wiederherstellung_vormerken(archiv: Path | str, db_pfad: Path | str, passwort: str | None = None) -> Path:

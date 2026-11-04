@@ -150,6 +150,36 @@ def cmd_export(args):
     print(export.paket(_con(args), args.von, args.bis, args.ziel))
 
 
+def cmd_wiederherstellen(args):
+    import getpass
+
+    from . import geheim, sicherung
+
+    pfad = Path(args.datenbank or config.datenbankpfad())
+    daten = Path(args.datei).read_bytes()
+    pw = args.passwort or geheim.lesen("sicherung")
+    if daten.startswith(sicherung.MAGIC) and not pw:
+        pw = getpass.getpass("Sicherungspasswort: ")
+    inhalt = sicherung.archiv_lesen(daten, pw)
+    info = sicherung.datenbank_info(inhalt)
+    aktuell = {}
+    if pfad.exists():
+        c = db.verbinden(pfad)
+        aktuell = sicherung.aktuelle_info(c)
+        c.close()  # unter Windows muss die Datei frei sein, bevor sie ersetzt wird
+    print(f"Sicherung: Kasse {info['kassen_id']} · {info['firma'] or '-'} · {info['belege']} Belege "
+          f"(letzter Nr. {info['letzte_belegnummer']}, {info['letzter_beleg'] or '-'})")
+    for w in sicherung.vergleich_warnungen(aktuell, info):
+        print("WARNUNG:", w)
+    if not args.ja and input("Jetzt wiederherstellen? [j/N] ").strip().lower() not in ("j", "ja"):
+        print("Abgebrochen.")
+        return 1
+    alt = sicherung.datenbank_ersetzen(inhalt, pfad)
+    db.verbinden(pfad).close()
+    print("Wiederhergestellt." + (f" Bisherige Datenbank aufgehoben: {alt}" if alt else ""))
+    return 0
+
+
 def cmd_selbsttest(args):
     from .selbsttest import ausfuehren
 
@@ -225,6 +255,12 @@ def main(argv=None):
     p.add_argument("bis")
     p.add_argument("ziel")
     p.set_defaults(f=cmd_export)
+
+    p = sub.add_parser("wiederherstellen", help="Sicherung (.rksich/.zip) wiederherstellen – Kasse vorher beenden")
+    p.add_argument("datei")
+    p.add_argument("--passwort")
+    p.add_argument("--ja", action="store_true", help="ohne Rückfrage")
+    p.set_defaults(f=cmd_wiederherstellen)
 
     sub.add_parser("selbsttest", help="alle Ausgabewege mit einer Testkasse prüfen (PDF, Bon, Export, Sicherung)") \
         .set_defaults(f=cmd_selbsttest)

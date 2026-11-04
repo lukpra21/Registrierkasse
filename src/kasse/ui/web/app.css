@@ -431,3 +431,11 @@ label > input[type=color] { width: 100%; height: 38px; padding: 2px; }
 .bon-papier .zentriert { text-align: center; }
 .bon-papier .qr { margin: 10px auto 0; background: repeating-conic-gradient(#111 0 25%, #fff 0 50%) 0 0 / 8px 8px; }
 .bon-papier .schnitt { border-top: 2px dashed #999; margin-top: 12px; text-align: center; font-size: 10px; color: #999; padding-top: 2px; }
+
+/* Wiederherstellung */
+.tabelle.vergleich td:first-child { color: var(--text-2); width: 26%; }
+.tabelle.vergleich td { padding: 7px 10px; }
+.warnbox { margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: rgba(229, 72, 77, .1); color: var(--rot);
+  font-size: 13px; font-weight: 600; }
+.warnbox p { margin: 4px 0; }
+.btn.gefahr:disabled { opacity: .4; }

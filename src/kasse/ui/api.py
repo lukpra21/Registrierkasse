@@ -93,6 +93,8 @@ class KassenApi:
         self._update_info: dict | None = None
         self._update_fehler: str | None = None
         self._beenden = None  # wird von app.py gesetzt (Fenster schließen)
+        self._fenster = None  # pywebview-Fenster (für Dateidialoge), von app.py gesetzt
+        self._gewaehlte_dateien: set[str] = set()
 
     # ------------------------------------------------------------------ Hilfen
 
@@ -185,6 +187,7 @@ class KassenApi:
             "releases": update.RELEASES_SEITE,
             "update": self._update_info,
             "karten_terminal": e("karten_terminal", "manuell"),
+            "dateidialog": self._fenster is not None,
         }
 
     def _hat_belege(self) -> bool:
@@ -748,16 +751,106 @@ class KassenApi:
     def sicherungen(self):
         return sicherung.liste(self.con)
 
+    MAX_SICHERUNG = 500_000_000
+
+    def _sicherung_bytes(self, quelle: dict) -> tuple[bytes, str]:
+        """Inhalt einer Sicherung: aus dem Sicherungsordner, per Dateidialog gewählt oder hochgeladen."""
+        if not isinstance(quelle, dict):
+            raise ValueError("Ungültige Quelle")
+        if quelle.get("datei"):
+            datei = str(quelle["datei"])
+            erlaubt = {x["datei"] for x in sicherung.liste(self.con)} | self._gewaehlte_dateien
+            if datei not in erlaubt:
+                raise KassenFehler("Unbekannte Sicherungsdatei – bitte über „Datei wählen“ auswählen")
+            pfad = Path(datei)
+            if not pfad.is_file():
+                raise KassenFehler("Sicherungsdatei nicht gefunden")
+            if pfad.stat().st_size > self.MAX_SICHERUNG:
+                raise KassenFehler("Sicherungsdatei zu groß")
+            return pfad.read_bytes(), pfad.name
+        if quelle.get("daten"):
+            roh = str(quelle["daten"])
+            if "," in roh[:100]:
+                roh = roh.split(",", 1)[1]
+            daten = base64.b64decode(roh)
+            if len(daten) > self.MAX_SICHERUNG:
+                raise KassenFehler("Sicherungsdatei zu groß")
+            return daten, str(quelle.get("name") or "hochgeladene Sicherung")
+        raise ValueError("Keine Sicherung angegeben")
+
+    def _sicherung_entpacken(self, quelle: dict, passwort: str) -> tuple[bytes, str]:
+        daten, name = self._sicherung_bytes(quelle)
+        pw = passwort or geheim.lesen("sicherung")
+        try:
+            return sicherung.archiv_lesen(daten, pw), name
+        except ValueError as e:
+            if daten.startswith(sicherung.MAGIC):
+                # eigener Fehlercode, damit die Oberfläche nach dem Passwort fragen kann
+                raise KassenFehler(("PASSWORT: " if not passwort else "PASSWORT_FALSCH: ") + str(e)) from e
+            raise
+
     @_api(recht="chef")
-    def sicherung_wiederherstellen(self, datei: str, passwort: str = ""):
+    def sicherung_datei_waehlen(self):
+        """Nativer Dateidialog (nur im Programmfenster); liefert den gewählten Pfad oder None."""
+        if self._fenster is None:
+            return None
+        import webview  # type: ignore[import-not-found]
+
+        typ = getattr(webview, "FileDialog", None)
+        modus = typ.OPEN if typ else webview.OPEN_DIALOG
+        auswahl = self._fenster.create_file_dialog(modus, allow_multiple=False,
+                                                   file_types=("Sicherung (*.rksich;*.zip)", "Alle Dateien (*.*)"))
+        if not auswahl:
+            return None
+        pfad = str(auswahl[0] if isinstance(auswahl, (list, tuple)) else auswahl)
+        self._gewaehlte_dateien.add(pfad)
+        return {"datei": pfad, "name": Path(pfad).name, "verschluesselt": pfad.endswith(".rksich")}
+
+    @_api(recht="chef")
+    def sicherung_info(self, quelle: dict, passwort: str = ""):
+        """Prüft eine Sicherung und vergleicht sie mit der aktuellen Kasse – ohne etwas zu verändern."""
+        inhalt, name = self._sicherung_entpacken(quelle, passwort)
+        info = sicherung.datenbank_info(inhalt)
+        info["datei"] = name
+        info["datum"] = sicherung.datum_aus_dateiname(name) or info.get("gesichert")
+        aktuell = sicherung.aktuelle_info(self.con)
+        return {"sicherung": info, "aktuell": aktuell, "warnungen": sicherung.vergleich_warnungen(aktuell, info)}
+
+    @_api(recht="chef")
+    def sicherung_wiederherstellen(self, quelle, passwort: str = ""):
+        """Stellt eine Sicherung sofort wieder her (ohne Neustart).
+
+        Vorher wird der aktuelle Stand gesichert; die bisherige Datenbank bleibt als
+        ``kasse-vor-wiederherstellung-….db`` im Datenverzeichnis erhalten.
+        """
         if not self.db_pfad:
             raise KassenFehler("Datenbankpfad unbekannt")
-        erlaubt = {s["datei"] for s in sicherung.liste(self.con)}
-        if datei not in erlaubt:
-            raise KassenFehler("Unbekannte Sicherungsdatei")
-        sicherung.wiederherstellung_vormerken(datei, self.db_pfad, passwort or geheim.lesen("sicherung"))
-        self._ereignis("Wiederherstellung vorgemerkt", Path(datei).name)
-        return "Wiederherstellung vorgemerkt – bitte die Kasse jetzt beenden und neu starten."
+        if isinstance(quelle, str):  # ältere Oberfläche: nur Dateiname
+            quelle = {"datei": quelle}
+        inhalt, name = self._sicherung_entpacken(quelle, passwort)
+        info = sicherung.datenbank_info(inhalt)  # prüft auch die Integrität
+        aktuell = sicherung.aktuelle_info(self.con)
+
+        sicherheitskopie = None
+        if aktuell.get("belege") or aktuell.get("artikel") or aktuell.get("kunden"):
+            try:
+                sicherheitskopie = str(sicherung.sichern(self.con))
+            except Exception as e:  # z. B. Sicherungsziel (USB-Stick) nicht verfügbar
+                sicherheitskopie = f"nicht möglich: {e}"
+        if self.con.in_transaction:
+            self.con.commit()
+        self.con.close()
+        try:
+            alt = sicherung.datenbank_ersetzen(inhalt, self.db_pfad)
+        finally:
+            self.con = db.verbinden(self.db_pfad)  # bringt ältere Sicherungen auch auf den aktuellen Stand
+        self._signer = None
+        self._terminal_ok.clear()
+        self.benutzer = None
+        db.ereignis(self.con, "Sicherung wiederhergestellt", f"{name}; vorher gesichert: {sicherheitskopie or '-'}")
+        self.con.commit()
+        return {"info": info, "alte_datenbank": str(alt) if alt else None, "sicherheitskopie": sicherheitskopie,
+                "anmelden": benutzer.gibt_benutzer(self.con)}
 
     @_api(recht="chef")
     def dep_exportieren(self):

@@ -178,7 +178,7 @@
           <button class="aktion" id="btn-sicherung"><i data-i="save"></i><b>Jetzt sichern</b><small id="sicherung-info">–</small></button>
           <button class="aktion" id="btn-export" data-chef><i data-i="export"></i><b>Export Steuerberater</b><small>Belege, Rechnungen, BMD, DEP</small></button>
           <button class="aktion" id="btn-dep" data-chef><i data-i="doc"></i><b>DEP-Export</b><small>Datenerfassungsprotokoll</small></button>
-          <button class="aktion" id="btn-wiederherstellen" data-chef><i data-i="undo"></i><b>Wiederherstellen</b><small>Sicherung zurückspielen</small></button>
+          <button class="aktion" id="btn-wiederherstellen" data-chef><i data-i="undo"></i><b>Wiederherstellen</b><small>Sicherung prüfen und zurückspielen</small></button>
           <button class="aktion gefahr" data-null="Schlussbeleg" data-chef><i data-i="lock"></i><b>Schlussbeleg</b><small>Kasse endgültig außer Betrieb nehmen</small></button>
         </div>
       </div>
@@ -323,6 +323,7 @@
             <label>Anzahl aufbewahren<input name="sicherung_behalten" type="number" min="1"></label></div>
           <div class="geheim" data-geheim="sicherung"><label>Sicherungspasswort (verschlüsselt alle Sicherungen)<input type="password" placeholder="••••••"></label><button class="btn ghost" type="button">Speichern</button></div>
           <p class="hinweis">Das Passwort unbedingt zusätzlich sicher notieren – ohne Passwort ist eine verschlüsselte Sicherung nicht lesbar.</p>
+          <button class="btn ghost" type="button" id="btn-wiederherstellen2"><i data-i="undo"></i>Sicherung wiederherstellen …</button>
         </fieldset>
         <fieldset><legend>Buchhaltung (BMD-Konten)</legend>
           <div class="zweispaltig"><label>Kassa<input name="konto_kassa"></label><label>Karten-Verrechnung<input name="konto_karte"></label></div>
