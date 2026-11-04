@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+
+# Kundendaten / Kassendaten – gehören NIEMALS ins Repository
+daten/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.zip
+qrk_*/
+dep-export*.json
+*.pdf
+*.p12
+*.pfx
+.env

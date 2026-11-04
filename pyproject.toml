@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "registrierkasse"
+version = "0.1.0"
+description = "RKSV-konforme Registrierkasse für KMU (Österreich) mit A-Trust-Onlinesignatur, Bondrucker und A4-Rechnungen"
+requires-python = ">=3.11"
+readme = "README.md"
+dependencies = [
+    "cryptography>=42",
+]
+
+[project.optional-dependencies]
+bon = ["python-escpos>=3.1"]
+a4 = ["reportlab>=4"]
+alles = ["python-escpos>=3.1", "reportlab>=4"]
+dev = ["pytest>=8", "python-escpos>=3.1", "reportlab>=4"]
+
+[project.scripts]
+kasse = "kasse.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
