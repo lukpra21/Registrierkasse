@@ -317,6 +317,30 @@ def test_bmd_gutscheine(api, tmp_path):
     assert not any(z[1] == "2880" for z in zeilen)  # nichts auf das Kartenkonto
 
 
+def test_bmd_mischzahlung_centgenau(api):
+    """Lasttest 2026-11-09, Beleg 52: drei Steuersätze, Bar + Karte – je Satz gerundet ergab Kassa +1 Cent."""
+    import datetime as dt
+
+    v = ok(api.verkaufen([{"typ": "gutschein_verkauf", "preis_cent": 1000}], "Bar"))
+    code = v["gutscheine"][0]
+    posten = [
+        {"name": "Torte", "preis_cent": 16896, "steuer_prozent": "10", "menge": "1"},
+        {"name": "Tasche", "preis_cent": 239, "steuer_prozent": "20", "menge": "1"},
+        {"typ": "gutschein_verkauf", "preis_cent": 500},
+        {"typ": "gutschein_einloesung", "code": code, "preis_cent": -1000},
+    ]
+    ok(api.verkaufen(posten, [{"art": "Bar", "betrag_cent": 5545}, {"art": "Karte", "betrag_cent": 11090}]))
+    heute = dt.date.today().isoformat()
+    zeilen = list(csv.reader(io.StringIO(export.bmd_buchungen(api.con, heute, heute).decode("cp1252")), delimiter=";"))[1:]
+
+    def summe(konto):
+        return sum(int(z[9].replace(",", "")) for z in zeilen if z[1] == konto)
+
+    assert summe("2700") == 1000 + 5545   # Kassa = tatsächlich bar kassiert
+    assert summe("2880") == 11090         # Kartenkonto = Kartenzahlung
+    assert summe("3480") == 1000          # eingelöster Gutschein
+
+
 def test_storno_bar_rechnung(api):
     r = _rechnung(api)
     beleg = api.con.execute("SELECT beleg_id FROM dokumente WHERE id = ?", (r["id"],)).fetchone()[0]

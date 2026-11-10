@@ -107,6 +107,27 @@ def _aufteilen(betrag: int, schluessel: list[tuple[str, int]]) -> list[tuple[str
     return res
 
 
+def _matrix(haben: dict[tuple[str, str], int], zahlungen: list[tuple[str, int]]) -> list[tuple[tuple[str, str, str], int]]:
+    """Verteilt die Erlöse eines Belegs auf die Zahlungsarten.
+
+    Jede Zahlungsart erhält exakt ihren bezahlten Betrag (Kassa-/Kartenkonto stimmt mit Kassenbuch und
+    Kartenabrechnung überein), jeder Erlös exakt seinen Betrag. Würde jeder Erlös einzeln aufgeteilt und
+    gerundet, könnten sich die Rundungen je Zahlungsart zu Centdifferenzen summieren.
+    """
+    erloese = list(haben.items())
+    rest = dict(haben)
+    res = []
+    for i, (art, betrag) in enumerate(zahlungen):
+        if i == len(zahlungen) - 1:
+            anteile = list(rest.items())
+        else:
+            anteile = _aufteilen(betrag, erloese)
+        for schl, anteil in anteile:
+            rest[schl] -= anteil
+            res.append(((art, *schl), anteil))
+    return res
+
+
 def bmd_buchungen(con: sqlite3.Connection, von: str, bis: str) -> bytes:
     """Tageslosung je Tag, Zahlungs- und Erlöskonto (Soll Kassa/Karte/Gutschein an Erlös/Gutschein).
 
@@ -141,10 +162,9 @@ def bmd_buchungen(con: sqlite3.Connection, von: str, bis: str) -> bytes:
                 zahlungen.append(("Gutschein", gutschein_zahlung))
             if not zahlungen:
                 zahlungen = [(b["zahlungsart"] if b["zahlungsart"] in zahl_konto else "Bar", sum(haben.values()))]
-            for (schl, satz), betrag in haben.items():
-                for art, anteil in _aufteilen(betrag, zahlungen):
-                    k = (art, schl, satz)
-                    verteilung[k] = verteilung.get(k, 0) + anteil
+            for (art, schl, satz), anteil in _matrix(haben, zahlungen):
+                k = (art, schl, satz)
+                verteilung[k] = verteilung.get(k, 0) + anteil
         datum = f"{tag[8:10]}.{tag[5:7]}.{tag[0:4]}"
         for (art, schl, satz), brutto in sorted(verteilung.items()):
             if not brutto:

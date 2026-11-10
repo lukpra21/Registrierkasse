@@ -38,11 +38,25 @@ def _sicherungs_waechter(api: KassenApi, intervall_s: int = 1800) -> None:
 
 
 def http_server(api: KassenApi, port: int = 8765) -> ThreadingHTTPServer:
+    """Oberfläche im Browser des Kassen-PCs (nur 127.0.0.1).
+
+    Schutz gegen fremde Webseiten im selben Browser: nur Anfragen mit eigenem ``Host`` (gegen DNS-Rebinding),
+    passender ``Origin`` und ``Content-Type: application/json`` (erzwingt die CORS-Vorabprüfung, die dieser Server
+    nie erlaubt) – ein Formular oder ``fetch`` einer fremden Seite kann so keine Kassenfunktion auslösen.
+    """
+    from urllib.parse import urlsplit
+
     methoden = oeffentliche_methoden(api)
+    erlaubte_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
     class Handler(BaseHTTPRequestHandler):
+        timeout = 30
+
         def log_message(self, *a):
             pass
+
+        def _eigener_host(self) -> bool:
+            return self.headers.get("Host", "") in erlaubte_hosts
 
         def _senden(self, code: int, body: bytes, typ: str):
             self.send_response(code)
@@ -53,9 +67,11 @@ def http_server(api: KassenApi, port: int = 8765) -> ThreadingHTTPServer:
             self.wfile.write(body)
 
         def do_GET(self):
+            if not self._eigener_host():
+                return self._senden(403, b"verboten", "text/plain")
             pfad = self.path.split("?")[0].lstrip("/") or "index.html"
             datei = (WEB / pfad).resolve()
-            if not str(datei).startswith(str(WEB.resolve())) or not datei.is_file():
+            if not datei.is_relative_to(WEB.resolve()) or not datei.is_file():
                 return self._senden(404, b"nicht gefunden", "text/plain")
             self._senden(200, datei.read_bytes(), TYPEN.get(datei.suffix, "application/octet-stream"))
 
@@ -63,9 +79,23 @@ def http_server(api: KassenApi, port: int = 8765) -> ThreadingHTTPServer:
             name = self.path.removeprefix("/api/")
             if name not in methoden:
                 return self._senden(404, b"{}", "application/json")
-            laenge = int(self.headers.get("Content-Length", 0))
-            args = json.loads(self.rfile.read(laenge) or b"{}").get("args", [])
-            res = methoden[name](*args)
+            origin = self.headers.get("Origin")
+            if (not self._eigener_host() or (origin and urlsplit(origin).netloc not in erlaubte_hosts)
+                    or not self.headers.get("Content-Type", "").startswith("application/json")):
+                return self._senden(403, b"{}", "application/json")
+            try:
+                laenge = int(self.headers.get("Content-Length", 0) or 0)
+                if not 0 <= laenge <= 600_000_000:  # Sicherungen werden als Base64 hochgeladen
+                    raise ValueError
+                args = json.loads(self.rfile.read(laenge) or b"{}").get("args", [])
+                if not isinstance(args, list):
+                    raise ValueError
+            except ValueError:
+                return self._senden(400, b"{}", "application/json")
+            try:
+                res = methoden[name](*args)
+            except TypeError:
+                res = {"ok": False, "fehler": "Ungültiger Aufruf"}
             self._senden(200, json.dumps(res, ensure_ascii=False).encode(), "application/json")
 
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
