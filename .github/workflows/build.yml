@@ -51,7 +51,7 @@ jobs:
           python tools/dep_pruefen.py dep.json; if ($LASTEXITCODE) { exit 1 }
           $p = Start-Process dist/Registrierkasse/Registrierkasse.exe -ArgumentList "--browser","--port","8799" -PassThru
           Start-Sleep -Seconds 10
-          $r = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8799/api/status -Body '{"args":[]}'
+          $r = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8799/api/status -Body '{"args":[]}' -ContentType "application/json"
           Stop-Process -Id $p.Id -Force
           if (-not $r.ok -or $r.daten.kassen_id -ne "WIN-TEST") { throw "Oberfläche antwortet nicht korrekt" }
           Write-Host "Programmtest OK: Kasse $($r.daten.kassen_id), Version $($r.daten.version)"
