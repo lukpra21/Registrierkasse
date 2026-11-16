@@ -340,7 +340,7 @@ function zeichneKacheln() {
     (!q || a.name.toLowerCase().includes(q) || a.artikelnummer === q || a.barcode === q));
   $("#kacheln").innerHTML = liste.length ? liste.map((a) => `
     <button class="kachel" data-id="${a.id}" style="--farbe:${gruppenFarbe(a.gruppe)}">
-      <span class="n">${esc(a.name)}</span><span class="p">${euro(a.brutto_cent)} €<small>${esc(a.steuer_prozent)} %${a.lagerstand != null ? ` · ${esc(a.lagerstand)} lag.` : ""}</small></span>
+      <span class="n">${esc(a.name)}</span><span class="p">${a.brutto_cent ? `${euro(a.brutto_cent)} €${a.einheit === "kg" ? "/kg" : ""}` : "Preis offen"}<small>${esc(a.steuer_prozent)} %${a.lagerstand != null ? ` · ${esc(a.lagerstand)} lag.` : ""}</small></span>
     </button>`).join("") : `<div class="nichts">${S.artikel.length ? "Kein Artikel gefunden" : "Noch keine Artikel – unter „Artikel“ anlegen oder aus QRK importieren"}</div>`;
 }
 $("#kacheln").addEventListener("click", (e) => {
@@ -357,10 +357,28 @@ $("#suche").addEventListener("keydown", (e) => {
   else toast(`Kein eindeutiger Artikel für „${q}“`, "fehler");
 });
 
-function inKorb(a, menge = 1) {
-  const vorhanden = S.korb.find((p) => p.typ === "artikel" && p.artikel_id && p.artikel_id === a.id && !p.rabatt_cent);
+const zuMenge = (t) => { const n = Number(String(t ?? "").trim().replace(",", ".")); return Number.isFinite(n) && n > 0 ? Math.round(n * 1000) / 1000 : NaN; };
+
+async function inKorb(a, menge = 1) {
+  const kg = a.einheit === "kg", offen = !a.brutto_cent;
+  let preis = a.brutto_cent;
+  if (offen) {
+    const v = await eingabe(`${a.name}: Preis`, { feld: kg ? "Preis je kg €" : "Preis €", knopf: "Weiter" });
+    if (v == null) return;
+    preis = zuCent(v);
+    if (!Number.isFinite(preis) || preis <= 0) return toast("Preis ungültig", "fehler");
+  }
+  if (kg) {
+    const v = await eingabe(`${a.name}: Gewicht`, { feld: "Gewicht kg", text: `${euro(preis)} € je kg`, knopf: "In den Korb" });
+    if (v == null) return;
+    menge = zuMenge(v);
+    if (!Number.isFinite(menge)) return toast("Gewicht ungültig", "fehler");
+  }
+  // Gewichts- und Freipreis-Positionen nie zusammenfassen – jede Abwaage ist eine eigene Zeile
+  const vorhanden = !kg && !offen && S.korb.find((p) => p.typ === "artikel" && p.artikel_id && p.artikel_id === a.id && !p.rabatt_cent);
   if (vorhanden) vorhanden.menge += menge;
-  else S.korb.push({ typ: "artikel", artikel_id: a.id, name: a.name, preis_cent: a.brutto_cent, steuer_prozent: a.steuer_prozent, menge, rabatt_cent: 0 });
+  else S.korb.push({ typ: "artikel", artikel_id: a.id, name: a.name, preis_cent: preis, steuer_prozent: a.steuer_prozent, menge, rabatt_cent: 0,
+                     einheit: kg ? "kg" : "", offen });
   zeichneKorb();
 }
 
@@ -405,9 +423,11 @@ $("#positionen").addEventListener("click", (e) => {
 
 function positionDialog(i) {
   const p = S.korb[i];
-  const m = dialog(`<h3>${esc(p.name)}</h3><p class="unter">${euro(p.preis_cent)} € je Stück · ${esc(p.steuer_prozent)} % USt</p>
+  const je = p.einheit === "kg" ? "kg" : "Stück";
+  const m = dialog(`<h3>${esc(p.name)}</h3><p class="unter">${euro(p.preis_cent)} € je ${je} · ${esc(p.steuer_prozent)} % USt</p>
     <div class="formfelder">
-      <label>Menge<input id="pd-menge" inputmode="decimal" value="${String(p.menge).replace(".", ",")}" autofocus></label>
+      <div class="zweispaltig"><label>${p.einheit === "kg" ? "Gewicht kg" : "Menge"}<input id="pd-menge" inputmode="decimal" value="${String(p.menge).replace(".", ",")}" autofocus></label>
+      ${p.offen ? `<label>Preis je ${je} €<input id="pd-preis" inputmode="decimal" value="${euro(p.preis_cent)}"></label>` : ""}</div>
       <div class="zweispaltig"><label>Rabatt %<input id="pd-proz" inputmode="decimal" placeholder="0"></label>
       <label>oder Rabatt €<input id="pd-eur" inputmode="decimal" value="${p.rabatt_cent ? euro(p.rabatt_cent) : ""}" placeholder="0,00"></label></div>
     </div>
@@ -416,14 +436,16 @@ function positionDialog(i) {
   $("#pd-eur", m).oninput = () => { $("#pd-proz", m).value = ""; };
   $("#pd-weg", m).onclick = () => { S.korb.splice(i, 1); zeichneKorb(); schliessen(); };
   const ok = () => {
-    const menge = Number($("#pd-menge", m).value.replace(",", "."));
-    if (!Number.isFinite(menge) || menge <= 0) return toast("Menge ungültig", "fehler");
-    const brutto = Math.round(menge * p.preis_cent);
+    const menge = zuMenge($("#pd-menge", m).value);
+    if (!Number.isFinite(menge)) return toast("Menge ungültig", "fehler");
+    const preis = p.offen ? zuCent($("#pd-preis", m).value) : p.preis_cent;
+    if (!Number.isFinite(preis) || preis <= 0) return toast("Preis ungültig", "fehler");
+    const brutto = Math.round(menge * preis);
     let rabatt = 0;
     if ($("#pd-proz", m).value) rabatt = Math.round(brutto * Number($("#pd-proz", m).value.replace(",", ".")) / 100);
     else if ($("#pd-eur", m).value) rabatt = zuCent($("#pd-eur", m).value);
     if (!Number.isFinite(rabatt) || rabatt < 0 || rabatt > brutto) return toast("Rabatt ungültig", "fehler");
-    p.menge = menge; p.rabatt_cent = rabatt; zeichneKorb(); schliessen();
+    p.menge = menge; p.preis_cent = preis; p.rabatt_cent = rabatt; zeichneKorb(); schliessen();
   };
   $("#pd-ok", m).onclick = ok;
   $$("input", m).forEach((el) => (el.onkeydown = (e) => e.key === "Enter" && ok()));
@@ -890,7 +912,9 @@ async function artikelDialog(a) {
       <label>USt<select id="a-ust">${saetze.map((s) => `<option ${s.prozent === a.steuer_prozent ? "selected" : ""} value="${esc(s.prozent)}">${esc(s.prozent)} % – ${esc(s.bezeichnung || "")}</option>`).join("")}</select></label></div>
     <div class="zweispaltig"><label>Warengruppe<input id="a-gruppe" list="a-gruppen" value="${esc(a.gruppe)}"><datalist id="a-gruppen">${gruppen.map((g) => `<option value="${esc(g)}">`).join("")}</datalist></label>
       <label>Artikelnummer<input id="a-nr" value="${esc(a.artikelnummer)}"></label></div>
-    <label>Barcode<input id="a-bc" value="${esc(a.barcode)}"></label>
+    <div class="zweispaltig"><label>Barcode<input id="a-bc" value="${esc(a.barcode)}"></label>
+      <label>Einheit<select id="a-einheit"><option value="Stk">Stück</option><option value="kg" ${a.einheit === "kg" ? "selected" : ""}>kg – Gewicht wird beim Kassieren abgefragt</option></select></label></div>
+    <p class="hinweis">Preis 0,00 € = Preis wird beim Kassieren eingegeben.</p>
     <div class="zweispaltig"><label>Lagerstand (leer = ohne Lagerführung)<input id="a-lager" inputmode="decimal" value="${esc(a.lagerstand ?? "")}"></label>
       <label>Mindestbestand<input id="a-min" inputmode="decimal" value="${esc(a.mindestbestand ?? "")}"></label></div>
     <label class="switch"><input type="checkbox" id="a-sichtbar" ${a.sichtbar ? "checked" : ""}><span></span>In der Kassa anzeigen</label></div>
@@ -898,7 +922,7 @@ async function artikelDialog(a) {
   $("#a-ok", m).onclick = () => sicher(async () => {
     await api("artikel_speichern", { id: a.id, name: $("#a-name", m).value, preis: $("#a-preis", m).value, steuer_prozent: $("#a-ust", m).value,
       gruppe: $("#a-gruppe", m).value, artikelnummer: $("#a-nr", m).value, barcode: $("#a-bc", m).value, sichtbar: $("#a-sichtbar", m).checked,
-      lagerstand: $("#a-lager", m).value, mindestbestand: $("#a-min", m).value });
+      lagerstand: $("#a-lager", m).value, mindestbestand: $("#a-min", m).value, einheit: $("#a-einheit", m).value });
     schliessen(); toast("Artikel gespeichert"); ladeArtikelTabelle(); ladeArtikel(); ladeStatus();
   });
 }

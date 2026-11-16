@@ -296,18 +296,24 @@ class KassenApi:
         if gruppe:
             self.con.execute("INSERT OR IGNORE INTO warengruppen (name) VALUES (?)", (gruppe,))
             gid = self.con.execute("SELECT id FROM warengruppen WHERE name = ?", (gruppe,)).fetchone()[0]
+        if brutto < 0:
+            raise ValueError("Preis darf nicht negativ sein")
+        einheit = a.get("einheit") or None
+        if einheit not in (None, "Stk", "kg"):
+            raise ValueError("Einheit muss Stk oder kg sein")
         werte = (a.get("artikelnummer") or None, a.get("barcode") or None, name, gid, brutto,
                  str(a.get("steuer_prozent") or "20"), 1 if a.get("sichtbar", True) else 0,
                  self._menge_text(a.get("mindestbestand")))
         if a.get("id"):
             self.con.execute(
                 "UPDATE artikel SET artikelnummer=?, barcode=?, name=?, warengruppe_id=?, brutto_cent=?,"
-                " steuer_prozent=?, sichtbar=?, mindestbestand=? WHERE id=?", (*werte, a["id"]))
+                " steuer_prozent=?, sichtbar=?, mindestbestand=?, einheit=COALESCE(?, einheit) WHERE id=?",
+                (*werte, einheit, a["id"]))
             aid = a["id"]
         else:
             aid = self.con.execute(
                 "INSERT INTO artikel (artikelnummer, barcode, name, warengruppe_id, brutto_cent, steuer_prozent,"
-                " sichtbar, mindestbestand) VALUES (?,?,?,?,?,?,?,?)", werte).lastrowid
+                " sichtbar, mindestbestand, einheit) VALUES (?,?,?,?,?,?,?,?,?)", (*werte, einheit or "Stk")).lastrowid
         lager = self._menge_text(a.get("lagerstand"))
         alt = self.con.execute("SELECT lagerstand FROM artikel WHERE id = ?", (aid,)).fetchone()[0]
         if lager != alt:

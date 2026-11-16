@@ -123,10 +123,12 @@ def bon_text(con: sqlite3.Connection, beleg_id: int, breite: int | None = None, 
     steuern: dict[str, int] = {}
     summen: list[int] = []
     gutschein = False
-    for p in con.execute("SELECT * FROM belegpositionen WHERE beleg_id = ? ORDER BY pos", (beleg_id,)):
+    for p in con.execute("SELECT p.*, a.einheit FROM belegpositionen p LEFT JOIN artikel a ON a.id = p.artikel_id"
+                         " WHERE p.beleg_id = ? ORDER BY p.pos", (beleg_id,)):
         z.append(_zeile_(p["bezeichnung"], anzeige(p["summe_cent"] + p["rabatt_cent"])))
-        if p["menge"] not in ("1", "-1"):
-            z.append(f"  {p['menge']} x {anzeige(p['einzelpreis_cent'])}\n")
+        if p["menge"] not in ("1", "-1") or p["einheit"] == "kg":
+            einheit = " kg" if p["einheit"] == "kg" else ""
+            z.append(f"  {p['menge'].replace('.', ',')}{einheit} x {anzeige(p['einzelpreis_cent'])}\n")
         if p["rabatt_cent"]:
             z.append(_zeile_("  Rabatt", anzeige(-p["rabatt_cent"])))
         summen.append(p["summe_cent"])

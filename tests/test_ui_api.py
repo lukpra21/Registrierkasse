@@ -85,3 +85,25 @@ def test_statistik_mit_altbelegen(api):
     assert api.altbeleg(bid)["daten"]["positionen"][0]["bezeichnung"] == "Melange"
     # die RKSV-Belegliste bleibt getrennt
     assert len(api.belege()["daten"]) == 2  # Startbeleg + Verkauf
+
+
+def test_gewichtsartikel_und_freipreis(api):
+    from kasse.printing.bon import bon_text
+
+    r = api.artikel_speichern({"name": "Speck", "preis": "18,00", "steuer_prozent": "10", "einheit": "kg"})
+    assert r["ok"]
+    aid = r["daten"]
+    speck = next(a for a in api.artikel()["daten"] if a["id"] == aid)
+    assert speck["einheit"] == "kg"
+    # Speichern ohne Einheit (ältere Oberfläche) lässt kg stehen
+    assert api.artikel_speichern({"id": aid, "name": "Speck", "preis": "19,00", "steuer_prozent": "10"})["ok"]
+    assert api.con.execute("SELECT einheit FROM artikel WHERE id = ?", (aid,)).fetchone()[0] == "kg"
+    assert not api.artikel_speichern({"name": "X", "preis": "-1", "steuer_prozent": "20"})["ok"]
+    assert not api.artikel_speichern({"name": "X", "preis": "1", "steuer_prozent": "20", "einheit": "Liter"})["ok"]
+    # Verkauf 0,395 kg + Freipreis-Position
+    v = api.verkaufen([{"artikel_id": aid, "name": "Speck", "preis_cent": 1900, "steuer_prozent": "10", "menge": 0.395},
+                       {"artikel_id": None, "name": "Geschenkskorb", "preis_cent": 4590, "steuer_prozent": "13", "menge": 1}],
+                      "Bar")["daten"]
+    text = "".join(bon_text(api.con, v["id"]))
+    assert "0,395 kg x 19,00" in text
+    assert v["betrag_ermaessigt1"] == 751 and v["betrag_ermaessigt2"] == 4590

@@ -140,7 +140,7 @@ def qrk_datenbank(quelle: Path | str):
             infos = [i for i in z.infolist() if i.filename.lower().endswith(_DB_ENDUNGEN)] or z.infolist()
             for info in infos:
                 ziel = (Path(tmp) / info.filename).resolve()
-                if not str(ziel).startswith(str(Path(tmp).resolve())):
+                if not ziel.is_relative_to(Path(tmp).resolve()):
                     continue  # Schutz vor Pfad-Traversal
                 z.extract(info, tmp)
             db = _finde_db(Path(tmp))
@@ -375,6 +375,9 @@ def importiere(quelle: Path | str, ziel: sqlite3.Connection, probelauf: bool = F
                         brutto = euro_zu_cent(r[c["brutto"]])
                     else:
                         brutto = euro_zu_cent(Decimal(str(r[c["netto"]])) * (100 + Decimal(steuer)) / 100)
+                    if brutto < 0:
+                        sichtbar = 0  # Korrektur-/Gutschriftsartikel nicht als Kachel anbieten
+                        bericht.hinweise.append(f"Artikel {name} hat negativen Preis – ausgeblendet")
                     if nr:
                         nummern[nr] = len(artikel)
                     if qid is not None:

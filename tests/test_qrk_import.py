@@ -161,3 +161,14 @@ def test_neueste_jahresdatenbank(tmp_path):
     _qrk_db(tmp_path / "2019-QRK.db")
     with qrk.qrk_datenbank(tmp_path) as (db, _):
         assert db.name == "2025-QRK.db"
+
+
+def test_negativer_preis_ausgeblendet(tmp_path, con):
+    _qrk_mit_verkaeufen(tmp_path / "q.db")
+    c = sqlite3.connect(tmp_path / "q.db")
+    c.execute("INSERT INTO products VALUES (9,'50',NULL,'Grillfleisch Korrektur',-30.9,-34.0,2,1,10.0,NULL,'2025-01-01')")
+    c.commit()
+    c.close()
+    b = qrk.importiere(tmp_path / "q.db", con)
+    assert any("negativen Preis" in h for h in b.hinweise)
+    assert con.execute("SELECT sichtbar FROM artikel WHERE name = 'Grillfleisch Korrektur'").fetchone()[0] == 0
