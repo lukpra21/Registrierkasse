@@ -67,7 +67,13 @@ const tageZurueck = (n) => { const d = new Date(); d.setDate(d.getDate() - n); r
 async function api(name, ...args) {
   let r;
   if (window.pywebview && window.pywebview.api) r = await window.pywebview.api[name](...args);
-  else r = await (await fetch(`/api/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ args }) })).json();
+  else {
+    try {
+      r = await (await fetch(`/api/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ args }) })).json();
+    } catch {
+      throw new Error("Keine Verbindung zum Kassenprogramm – bitte die Kasse neu starten");
+    }
+  }
   if (!r || !r.ok) {
     const f = new Error(r ? r.fehler : "Keine Antwort");
     if (r && r.fehler === "Bitte anmelden") sperren();
@@ -193,8 +199,9 @@ setInterval(() => {
 function zeige(view) {
   $$("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
-  ({ kassa: ladeArtikel, belege: ladeBelege, dokumente: ladeDokumente, artikel: ladeArtikelTabelle, kassenbuch: ladeKassenbuch,
-     statistik: ladeStatistik, abschluss: ladeAbschluss, einstellungen: ladeEinstellungen })[view]?.();
+  const laden = ({ kassa: ladeArtikel, belege: ladeBelege, dokumente: ladeDokumente, artikel: ladeArtikelTabelle, kassenbuch: ladeKassenbuch,
+     statistik: ladeStatistik, abschluss: ladeAbschluss, einstellungen: ladeEinstellungen })[view];
+  if (laden) sicher(laden);  // Fehler (z. B. keine Verbindung) sichtbar melden statt leerer Ansicht
 }
 $("#tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) zeige(b.dataset.view); });
 
