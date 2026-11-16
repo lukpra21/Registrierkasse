@@ -27,7 +27,7 @@ Kassenbuch, Benutzer mit PIN, verschlüsselte Datensicherung und Export für den
 | **Steuerberater** | ZIP mit Belegen (CSV), Rechnungen (CSV), BMD-Buchungen (Tageslosungen) und DEP |
 | **Sicherung** | automatisch (Start, alle 30 min geprüft, Monatsbeleg, Windows-Aufgabe), AES-256-verschlüsselt, Rotation, Wiederherstellung |
 | **Betrieb** | Windows-Installer, automatische Updates aus den GitHub-Releases (mit Prüfsumme), eigenes Logo/Akzentfarbe |
-| **Import** | einmalig aus QRK: Firmendaten, Steuersätze, Warengruppen, Artikel |
+| **Import** | einmalig aus QRK: Firmendaten, Steuersätze, Warengruppen, Artikel, auf Wunsch alle Verkäufe als Altbelege (Statistik, Nachschlagen – nicht Teil der RKSV-Kette) |
 
 ## Installation
 
@@ -61,8 +61,11 @@ kasse-ui --browser    # im Browser (nur 127.0.0.1)
    ```bash
    kasse-cli import-qrk D:\Downloads\qrk_20261028-1 --inspizieren
    kasse-cli import-qrk D:\Downloads\qrk_20261028-1 --probelauf
-   kasse-cli import-qrk D:\Downloads\qrk_20261028-1
+   kasse-cli import-qrk D:\Downloads\qrk_20261028-1 --verkaeufe
    ```
+   `--verkaeufe` übernimmt zusätzlich alle Verkäufe der QRK-Kasse als *Altbelege*: Sie fließen in die
+   Statistik ein und sind unter **Belege → Vorgängerkasse (QRK)** nachschlagbar, gehören aber nicht zur
+   RKSV-Belegkette dieser Kasse (das DEP der alten Kasse bleibt die QRK-Sicherung). Erneuter Import ersetzt sie.
 4. **Startbeleg** erstellen und mit der **BMF-Belegcheck-App** prüfen.
 5. **Einstellungen:** Firmendaten, Logo, Bondrucker + Testdruck, Kassenlade, A4-Drucker, Sicherungsordner
    und Sicherungspasswort, Benutzer (der erste ist Chef), E-Mail, Kartenzahlung.
