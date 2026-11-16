@@ -107,3 +107,14 @@ def test_gewichtsartikel_und_freipreis(api):
     text = "".join(bon_text(api.con, v["id"]))
     assert "0,395 kg x 19,00" in text
     assert v["betrag_ermaessigt1"] == 751 and v["betrag_ermaessigt2"] == 4590
+
+
+def test_steuernummer_ohne_uid(api):
+    from kasse.printing.bon import bon_kopf
+
+    assert api.einstellungen_speichern({"firma_uid": "", "firma_steuernummer": "12 345/6789"})["ok"]
+    kopf = "".join(bon_kopf(api.con, 42))
+    assert "St.-Nr.: 12 345/6789" in kopf and "UID" not in kopf
+    assert api.einstellungen_speichern({"firma_uid": "ATU12345678"})["ok"]
+    kopf = "".join(bon_kopf(api.con, 42))
+    assert "UID: ATU12345678" in kopf and "St.-Nr." not in kopf

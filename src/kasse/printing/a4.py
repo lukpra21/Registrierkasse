@@ -198,7 +198,8 @@ def _render(con: sqlite3.Connection, daten: A4Daten, ziel: Path | str) -> Path:
             if L.fusszeile.strip():
                 zeilen_fuss = L.fusszeile.strip().splitlines()
             else:
-                teile = [e("firma_name"), e("firma_uid") and f"UID {e('firma_uid')}", e("firma_fn") and f"FN {e('firma_fn')}",
+                teile = [e("firma_name"), e("firma_uid") and f"UID {e('firma_uid')}",
+                         not e("firma_uid") and e("firma_steuernummer") and f"St.-Nr. {e('firma_steuernummer')}", e("firma_fn") and f"FN {e('firma_fn')}",
                          e("firma_iban") and f"IBAN {e('firma_iban')}"]
                 zeilen_fuss = [" · ".join(filter(None, teile))]
             y = max(6 * mm, L.rand_unten * mm - 8 * mm) + (len(zeilen_fuss) - 1) * 9

@@ -35,7 +35,7 @@ GEHEIMNISSE = ("atrust", "sicherung", "smtp", "viva")
 
 # Einstellungen, die die Oberfläche lesen/schreiben darf
 EINSTELLUNGEN = (
-    "firma_name", "firma_adresse", "firma_uid", "firma_fn", "firma_iban", "firma_bic",
+    "firma_name", "firma_adresse", "firma_uid", "firma_steuernummer", "firma_fn", "firma_iban", "firma_bic",
     "bon_fusszeile", "bon_logo", "bondrucker_art", "bondrucker_name", "a4_drucker_name", "nach_verkauf",
     "kassenlade", "kassenlade_pin", "auto_abmelden_min",
     "sicherung_ziel", "sicherung_intervall_stunden", "sicherung_behalten",

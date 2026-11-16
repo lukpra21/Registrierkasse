@@ -92,6 +92,8 @@ def bon_kopf(con: sqlite3.Connection, breite: int) -> list[str]:
         z += [zeile for zeile in e(k).splitlines() if zeile]
     if e("firma_uid"):
         z.append(f"UID: {e('firma_uid')}")
+    elif e("firma_steuernummer"):  # ohne UID (z. B. Landwirt, Kleinunternehmer)
+        z.append(f"St.-Nr.: {e('firma_steuernummer')}")
     if e("bon_kopftext"):
         z += _umbrechen(e("bon_kopftext"), breite)
     return [zeile[:breite] + "\n" for zeile in z]
