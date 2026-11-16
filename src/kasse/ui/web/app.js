@@ -728,7 +728,39 @@ $("#belege-alle").onclick = () => { $("#belege-datum").value = ""; ladeBelege();
 
 const ART_BADGE = { Barumsatz: "gruen", Storno: "rot", Training: "orange", Startbeleg: "blau", Monatsbeleg: "blau", Jahresbeleg: "blau", Schlussbeleg: "rot" };
 
+let belegeQuelle = "kasse";
+$("#belege-quelle").onclick = (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  belegeQuelle = b.dataset.q;
+  $$("#belege-quelle button").forEach((x) => x.classList.toggle("active", x === b));
+  ladeBelege();
+};
+
+async function ladeAltbelege() {
+  const l = await api("altbelege", $("#belege-datum").value || null);
+  $("#belege-tabelle").innerHTML = `<thead><tr><th>Nr.</th><th>Zeit</th><th>Art</th><th>Zahlung</th><th>Kasse</th><th class="r">Betrag €</th><th></th></tr></thead><tbody>${
+    l.map((b) => `<tr class="${b.storniert ? "ausgegraut" : ""}"><td>${b.belegnummer}</td><td>${zeit(b.zeitpunkt)}</td>
+      <td><span class="badge ${ART_BADGE[b.art] || ""}">${esc(b.art)}</span>${b.storniert ? ' <span class="badge">storniert</span>' : ""}</td>
+      <td>${esc(b.zahlungsart || "")}</td><td>${esc(b.quelle)} ${esc(b.kassen_id || "")}</td><td class="r">${euro(b.summe_cent)}</td>
+      <td class="aktionen-zelle"><button class="btn ghost" data-a="alt" data-id="${b.id}">Positionen</button></td></tr>`).join("")
+    || `<tr><td colspan="7" style="text-align:center;color:var(--text-2);padding:40px">Keine Belege der Vorgängerkasse an diesem Tag</td></tr>`}</tbody>`;
+}
+
+async function altbelegDialog(id) {
+  const b = await api("altbeleg", id);
+  const menge = (m) => String(+Number(m).toFixed(3)).replace(".", ",");
+  dialog(`<h3>${esc(b.quelle)}-Beleg Nr. ${b.belegnummer}</h3>
+    <p class="unter">${zeit(b.zeitpunkt)} · ${esc(b.art)} · ${esc(b.zahlungsart || "")} · Kasse ${esc(b.kassen_id || "")}</p>
+    <div class="tabelle-wrap"><table class="tabelle"><thead><tr><th>Menge</th><th>Artikel</th><th class="r">Preis €</th><th class="r">MwSt.</th><th class="r">Summe €</th></tr></thead><tbody>
+    ${b.positionen.map((p) => `<tr><td>${menge(p.menge)}</td><td>${esc(p.bezeichnung)}</td><td class="r">${euro(p.einzelpreis_cent)}</td><td class="r">${esc(p.steuer_prozent)} %</td><td class="r">${euro(p.summe_cent)}</td></tr>`).join("")}
+    </tbody><tfoot><tr><th colspan="4">Gesamt</th><th class="r">${euro(b.summe_cent)}</th></tr></tfoot></table></div>
+    <p class="hinweis">Importiert aus der Vorgängerkasse – nur zum Nachschlagen, nicht Teil der RKSV-Belegkette dieser Kasse. Das Datenerfassungsprotokoll (DEP) dieser Belege liegt in der QRK-Sicherung.</p>
+    <div class="modal-knöpfe"><button class="btn" onclick="schliessen()">Schließen</button></div>`, { breit: true });
+}
+
 async function ladeBelege() {
+  $("#belege-quelle").hidden = !S.status?.altbelege;
+  if (belegeQuelle === "alt" && S.status?.altbelege) return ladeAltbelege();
   const l = await api("belege", $("#belege-datum").value || null);
   $("#belege-tabelle").innerHTML = `<thead><tr><th>Nr.</th><th>Zeit</th><th>Art</th><th>Zahlung</th><th>Kassier</th><th class="r">Betrag €</th><th></th></tr></thead><tbody>${
     l.map((b) => `<tr class="${b.storniert ? "ausgegraut" : ""}"><td>${b.belegnummer}</td><td>${zeit(b.zeitpunkt)}</td>
@@ -742,6 +774,7 @@ async function ladeBelege() {
 $("#belege-tabelle").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-a]"); if (!b) return;
   const id = Number(b.dataset.id);
+  if (b.dataset.a === "alt") return altbelegDialog(id);
   if (b.dataset.a === "aus") ausgabeDialog({ quelle: "beleg", id, titel: `Beleg Nr. ${b.dataset.nr}`, text: "Erneut ausgeben" });
   if (b.dataset.a === "storno" && await bestaetigen("Beleg stornieren?", `Für Beleg Nr. ${b.dataset.nr} wird ein Stornobeleg erstellt.`, "Stornieren", true)) {
     const s = await sicher(() => api("storno", id));
@@ -1027,7 +1060,8 @@ async function ladeStatistik() {
         tip: `<b>${d.toLocaleDateString("de-AT", { weekday: "short", day: "2-digit", month: "2-digit" })}</b>${euro(t ? t.umsatz : 0)} € · ${t ? t.belege : 0} Belege` });
     }
   }
-  saeulen($("#d-tage"), tage > 62 ? "Umsatz je Monat" : "Umsatz je Tag", "Kassenbelege, brutto", reihe);
+  saeulen($("#d-tage"), tage > 62 ? "Umsatz je Monat" : "Umsatz je Tag",
+    st.altdaten ? `Kassenbelege, brutto – inkl. ${euro(st.altdaten)} € aus der Vorgängerkasse (QRK)` : "Kassenbelege, brutto", reihe);
   balken($("#d-artikel"), "Top-Artikel", "nach Umsatz", st.artikel.map((a) => ({ label: a.name, wert: a.umsatz,
     tip: `<b>${esc(a.name)}</b>${euro(a.umsatz)} € · ${String(+a.menge.toFixed(2)).replace(".", ",")} Stk` })));
   balken($("#d-gruppen"), "Warengruppen", "nach Umsatz", st.gruppen.map((g) => ({ label: g.name, wert: g.umsatz })));

@@ -191,6 +191,33 @@ MIGRATIONEN = [
     """
     ALTER TABLE dokumente ADD COLUMN storniert_am TEXT;
     """,
+    # 3: Verkäufe einer früheren Kasse (z. B. QRK) – nur für Auswertungen, NICHT Teil der RKSV-Kette
+    """
+    CREATE TABLE altbelege (
+        id           INTEGER PRIMARY KEY,
+        quelle       TEXT NOT NULL,
+        kassen_id    TEXT,
+        belegnummer  INTEGER NOT NULL,
+        zeitpunkt    TEXT NOT NULL,
+        art          TEXT NOT NULL CHECK (art IN ('Barumsatz', 'Storno')),
+        zahlungsart  TEXT,
+        summe_cent   INTEGER NOT NULL,
+        storniert    INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (quelle, kassen_id, belegnummer)
+    );
+    CREATE INDEX altbelege_zeit ON altbelege(zeitpunkt);
+    CREATE TABLE altbelegpositionen (
+        altbeleg_id      INTEGER NOT NULL REFERENCES altbelege(id) ON DELETE CASCADE,
+        pos              INTEGER NOT NULL,
+        artikel_id       INTEGER REFERENCES artikel(id),
+        bezeichnung      TEXT NOT NULL,
+        menge            TEXT NOT NULL,
+        einzelpreis_cent INTEGER NOT NULL,
+        steuer_prozent   TEXT NOT NULL,
+        summe_cent       INTEGER NOT NULL,
+        PRIMARY KEY (altbeleg_id, pos)
+    );
+    """,
 ]
 
 STANDARD_STEUERSAETZE = [

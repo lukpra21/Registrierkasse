@@ -59,7 +59,8 @@ def cmd_import_qrk(args):
         print(qrk.inspiziere(args.quelle))
         return
     con = _con(args)
-    bericht = qrk.importiere(args.quelle, con, probelauf=args.probelauf, nur_sichtbare=args.nur_sichtbare)
+    bericht = qrk.importiere(args.quelle, con, probelauf=args.probelauf, nur_sichtbare=args.nur_sichtbare,
+                            verkaeufe=args.verkaeufe)
     print(("PROBELAUF – nichts geschrieben\n" if args.probelauf else "") + bericht.text())
 
 
@@ -205,11 +206,12 @@ def main(argv=None):
     p.add_argument("wert")
     p.set_defaults(f=cmd_set)
 
-    p = sub.add_parser("import-qrk", help="Firmendaten, Steuersätze und Artikel aus QRK-Sicherung übernehmen")
+    p = sub.add_parser("import-qrk", help="Firmendaten, Steuersätze, Artikel (und Verkäufe) aus QRK-Sicherung übernehmen")
     p.add_argument("quelle")
     p.add_argument("--probelauf", action="store_true", help="nur anzeigen, nichts schreiben")
     p.add_argument("--inspizieren", action="store_true", help="nur Tabellen/Spalten anzeigen")
     p.add_argument("--nur-sichtbare", action="store_true", help="ausgeblendete QRK-Artikel nicht übernehmen")
+    p.add_argument("--verkaeufe", action="store_true", help="auch alle Verkäufe als Altbelege (für Statistik) übernehmen")
     p.set_defaults(f=cmd_import_qrk)
 
     sub.add_parser("artikel", help="Artikelliste").set_defaults(f=cmd_artikel)

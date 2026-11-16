@@ -64,3 +64,24 @@ def test_nur_freigegebene_methoden(api):
 def test_epc_qr():
     t = epc_qr_inhalt("Muster GmbH", "AT61 1904 3002 3457 3201", "BKAUATWW", 12345, "RE-2026-00001").split("\n")
     assert t[:4] == ["BCD", "002", "1", "SCT"] and t[6] == "AT611904300234573201" and t[7] == "EUR123.45"
+
+
+def test_statistik_mit_altbelegen(api):
+    con = api.con
+    aid = con.execute("SELECT id FROM artikel WHERE name = 'Melange'").fetchone()[0]
+    bid = con.execute("INSERT INTO altbelege (quelle, kassen_id, belegnummer, zeitpunkt, art, zahlungsart, summe_cent)"
+                      " VALUES ('QRK', 'RK1', 7, '2026-11-03T10:15:00', 'Barumsatz', 'Bar', 1260)").lastrowid
+    con.execute("INSERT INTO altbelegpositionen VALUES (?, 1, ?, 'Melange', '3', 420, '20', 1260)", (bid, aid))
+    con.commit()
+    api.verkaufen(_posten(api), "Bar")
+    st = api.statistik("2026-11-01", "2026-11-30")["daten"]
+    assert st["altdaten"] == 1260
+    assert sum(t["umsatz"] for t in st["tage"]) == 840 + 1260
+    assert st["artikel"][0]["name"] == "Melange" and st["artikel"][0]["umsatz"] == 840 + 1260
+    assert {z["art"]: z["umsatz"] for z in st["zahlungen"]}["Bar"] == 840 + 1260
+    assert api.status()["daten"]["altbelege"] is True
+    liste = api.altbelege("2026-11-03")["daten"]
+    assert [b["belegnummer"] for b in liste] == [7]
+    assert api.altbeleg(bid)["daten"]["positionen"][0]["bezeichnung"] == "Melange"
+    # die RKSV-Belegliste bleibt getrennt
+    assert len(api.belege()["daten"]) == 2  # Startbeleg + Verkauf

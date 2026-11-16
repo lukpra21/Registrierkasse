@@ -184,6 +184,7 @@ class KassenApi:
             "auto_abmelden_min": int(e("auto_abmelden_min", "0") or 0),
             "lager_warnungen": lager,
             "rechnungen_ueberfaellig": offen,
+            "altbelege": bool(self.con.execute("SELECT 1 FROM altbelege LIMIT 1").fetchone()),
             "kassastand": kassenbuch.kassastand(self.con),
             "releases": update.RELEASES_SEITE,
             "update": self._update_info,
@@ -719,9 +720,77 @@ class KassenApi:
             "SELECT COALESCE(SUM(CAST(ROUND(CAST(p.menge AS REAL) * p.einzelpreis_cent) AS INTEGER)), 0)"
             " FROM dokumente d JOIN dokumentpositionen p ON p.dokument_id = d.id"
             " WHERE d.typ = 'Rechnung' AND d.beleg_id IS NULL AND d.datum BETWEEN ? AND ?", (von, bis)).fetchone()[0]
-        return {"von": von, "bis": bis, "tage": [dict(r) for r in tage], "artikel": [dict(r) for r in artikel],
-                "gruppen": [dict(r) for r in gruppen], "stunden": [dict(r) for r in stunden],
-                "zahlungen": [dict(r) for r in zahl], "rechnungen_ueberweisung": rech}
+        res = {"von": von, "bis": bis, "tage": [dict(r) for r in tage], "artikel": [dict(r) for r in artikel],
+               "gruppen": [dict(r) for r in gruppen], "stunden": [dict(r) for r in stunden],
+               "zahlungen": [dict(r) for r in zahl], "rechnungen_ueberweisung": rech, "altdaten": 0}
+        self._statistik_altbelege(res, von, bis)
+        return res
+
+    def _statistik_altbelege(self, res: dict, von: str, bis: str) -> None:
+        """Verkäufe der Vorgängerkasse (QRK-Import) in die Statistik einrechnen – nur Auswertung, kein RKSV."""
+        filt = "substr(b.zeitpunkt, 1, 10) BETWEEN ? AND ?"
+        alt = self.con.execute(f"SELECT COALESCE(SUM(summe_cent), 0) FROM altbelege b WHERE {filt}", (von, bis)).fetchone()[0]
+        if not self.con.execute(f"SELECT 1 FROM altbelege b WHERE {filt} LIMIT 1", (von, bis)).fetchone():
+            return
+        res["altdaten"] = alt
+
+        def mischen(liste: list[dict], zeilen, schluessel: str, felder: tuple[str, ...]):
+            idx = {d[schluessel]: d for d in liste}
+            for r in zeilen:
+                d = idx.get(r[schluessel])
+                if d is None:
+                    idx[r[schluessel]] = d = {schluessel: r[schluessel], **{f: 0 for f in felder}}
+                    liste.append(d)
+                for f in felder:
+                    d[f] = (d[f] or 0) + (r[f] or 0)
+
+        mischen(res["tage"], self.con.execute(
+            f"SELECT substr(b.zeitpunkt, 1, 10) AS tag, SUM(b.summe_cent) AS umsatz,"
+            f" SUM(CASE WHEN b.art = 'Barumsatz' THEN 1 ELSE 0 END) AS belege FROM altbelege b WHERE {filt}"
+            f" GROUP BY tag", (von, bis)), "tag", ("umsatz", "belege"))
+        res["tage"].sort(key=lambda d: d["tag"])
+        mischen(res["stunden"], self.con.execute(
+            f"SELECT CAST(substr(b.zeitpunkt, 12, 2) AS INTEGER) AS stunde, SUM(b.summe_cent) AS umsatz,"
+            f" COUNT(*) AS belege FROM altbelege b WHERE {filt} GROUP BY stunde", (von, bis)), "stunde", ("umsatz", "belege"))
+        res["stunden"].sort(key=lambda d: d["stunde"])
+        mischen(res["zahlungen"], self.con.execute(
+            f"SELECT b.zahlungsart AS art, SUM(b.summe_cent) AS umsatz FROM altbelege b WHERE {filt}"
+            f" GROUP BY b.zahlungsart", (von, bis)), "art", ("umsatz",))
+        mischen(res["gruppen"], self.con.execute(
+            f"SELECT COALESCE(g.name, 'Ohne Gruppe') AS name, SUM(p.summe_cent) AS umsatz FROM altbelegpositionen p"
+            f" JOIN altbelege b ON b.id = p.altbeleg_id LEFT JOIN artikel a ON a.id = p.artikel_id"
+            f" LEFT JOIN warengruppen g ON g.id = a.warengruppe_id WHERE {filt} GROUP BY 1", (von, bis)), "name", ("umsatz",))
+        res["gruppen"].sort(key=lambda d: -d["umsatz"])
+        # Top-Artikel neu über beide Quellen bilden (die Kassenliste ist auf 15 begrenzt)
+        filt_k = f"{filt} AND b.art IN ('Barumsatz', 'Storno')"
+        ohne_gs = "p.bezeichnung NOT LIKE 'Wertgutschein %' AND p.bezeichnung NOT LIKE 'Gutschein % eingelöst'"
+        res["artikel"] = [dict(r) for r in self.con.execute(
+            f"SELECT name, SUM(menge) AS menge, SUM(umsatz) AS umsatz FROM ("
+            f" SELECT p.bezeichnung AS name, CAST(p.menge AS REAL) AS menge, p.summe_cent AS umsatz"
+            f"  FROM belegpositionen p JOIN belege b ON b.id = p.beleg_id WHERE {filt_k} AND {ohne_gs}"
+            f" UNION ALL SELECT p.bezeichnung, CAST(p.menge AS REAL), p.summe_cent"
+            f"  FROM altbelegpositionen p JOIN altbelege b ON b.id = p.altbeleg_id WHERE {filt})"
+            f" GROUP BY name ORDER BY umsatz DESC LIMIT 15", (von, bis, von, bis))]
+
+    @_api()
+    def altbelege(self, datum: str | None = None, limit: int = 200):
+        """Belege der Vorgängerkasse (QRK-Import) – nur zum Nachschlagen."""
+        q = "SELECT * FROM altbelege"
+        args: list = []
+        if datum:
+            q += " WHERE substr(zeitpunkt, 1, 10) = ?"
+            args.append(datum)
+        q += " ORDER BY zeitpunkt DESC, belegnummer DESC LIMIT ?"
+        args.append(limit)
+        return [dict(r) for r in self.con.execute(q, args)]
+
+    @_api()
+    def altbeleg(self, altbeleg_id: int):
+        b = self.con.execute("SELECT * FROM altbelege WHERE id = ?", (altbeleg_id,)).fetchone()
+        if not b:
+            raise KassenFehler("Altbeleg nicht gefunden")
+        pos = self.con.execute("SELECT * FROM altbelegpositionen WHERE altbeleg_id = ? ORDER BY pos", (altbeleg_id,))
+        return {**dict(b), "positionen": [dict(r) for r in pos]}
 
     # ------------------------------------------------------------------ Kassenbuch
 
